@@ -28,8 +28,8 @@ app.use(cors());
 app.use(express.json());
 
 const client = new OpenAI({
-  baseURL: 'http://localhost:8080/v1',
-  apiKey: 'local-no-key',
+  baseURL: 'https://api.mistral.ai/v1',
+  apiKey: process.env.MISTRAL_API_KEY,
 });
 
 // Middleware за аутентификацију
@@ -59,8 +59,8 @@ app.post('/api/generate', auth, async (req: any, res) => {
         { role: "system", content: "Ти си планер путовања. Врати ИСКЉУЧИВО JSON: {\"title\": \"Наслов\", \"stops\": [{\"city\": \"Град\", \"lat\": 44, \"lng\": 20, \"description\": \"Опис\", \"reason\": \"Разлог\"}]}" },
         { role: "user", content: req.body.prompt }
       ],
-      model: "llama-3",
-      response_format: { type: "json_object" }
+      model: "mistral-small-latest",
+      response_format: { type: "json_object" },
     });
 
     const routeData = JSON.parse(completion.choices[0].message.content || '{}');

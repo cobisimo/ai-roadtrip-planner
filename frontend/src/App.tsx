@@ -8,7 +8,6 @@ import { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
 import axios from 'axios';
 
-// ОБАВЕЗНО: Импортуј стилове за Mantine v7
 import '@mantine/core/styles.css';
 import '@mantine/notifications/styles.css';
 import 'leaflet/dist/leaflet.css';
@@ -122,45 +121,34 @@ export default function App() {
           </Button>
         </AppShell.Navbar>
 
-        <AppShell.Main style={{ height: '100vh', padding: 0, position: 'relative' }}>
-          <div style={{
-            position: 'absolute',
-            top: 0,
-            bottom: 0,
-            left: 0,
-            right: 0,
-            zIndex: 1
-          }}>
-            <MapContainer
-              center={[44.78, 20.44]}
-              zoom={7}
-              style={{ height: '100%', width: '100%' }}
-            >
-              <TileLayer
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                attribution='&copy; OpenStreetMap'
-              />
-
-              {activeRoute && (
-                <>
-                  {activeRoute.map((stop, i) => (
-                    <Marker key={i} position={[stop.lat, stop.lng]}>
-                      <Popup>
-                        <Text fw={700}>{stop.city}</Text>
-                        <Text size="xs">{stop.description}</Text>
-                      </Popup>
-                    </Marker>
-                  ))}
-                  <Polyline
-                    positions={activeRoute.map(s => [s.lat, s.lng])}
-                    color="#4c6ef5"
-                  />
-                </>
-              )}
-            </MapContainer>
-          </div>
+        <AppShell.Main style={{ display: 'flex' }}>
+          <MapContainer
+            style={{ flex: 1 }}
+            center={activeRoute ? [activeRoute[0].lat, activeRoute[0].lng] : [43.89139, 20.34972]}
+            zoom={activeRoute ? 6 : 7}
+          >
+            <TileLayer
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            />
+            {activeRoute && (<>
+              {activeRoute.map((stop, index) => (
+                <Marker key={index} position={[stop.lat, stop.lng]}>
+                  <Popup>
+                    <div>
+                      <Text fw={600}>{stop.city}</Text>
+                      <Text size="sm">{stop.description}</Text>
+                      {stop.image && <img src={stop.image} alt={stop.city} style={{ width: '100%', marginTop: 8 }} />}
+                    </div>
+                  </Popup>
+                </Marker>
+              ))}
+              <Polyline positions={activeRoute.map(stop => [stop.lat, stop.lng])} color="blue" />
+            </>)}
+          </MapContainer>
         </AppShell.Main>
       </AppShell>
     </MantineProvider>
+
   );
 }

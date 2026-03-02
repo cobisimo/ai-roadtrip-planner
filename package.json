@@ -41,7 +41,7 @@
     "use-sidecar": "^1.1.3"
   },
   "scripts": {
-    "dev": "tsx src/server.ts",
+    "dev": "tsx --env-file=.env src/server.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
