@@ -22,6 +22,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [history, setHistory] = useState<any[]>([]);
   const [activeRoute, setActiveRoute] = useState<any[] | null>(null);
+  const [routeCoordinates, setRouteCoordinates] = useState<any[] | null>(null);
 
   const api = axios.create({
     baseURL: 'http://localhost:3000/api',
@@ -38,6 +39,27 @@ export default function App() {
   };
 
   useEffect(() => { if (token) loadHistory(); }, [token]);
+
+  const fetchRoute = async (waypoints) => {
+    try {
+      const response = await axios.get(`https://router.project-osrm.org/route/v1/driving/${waypoints.join(';')}?overview=full&geometries=geojson`);
+      return response.data.routes[0].geometry.coordinates;
+    } catch (error) {
+      console.error('Error fetching route:', error);
+      return null;
+    }
+  };
+
+  useEffect(() => {
+    if (activeRoute) {
+      const waypoints = activeRoute.map(stop => `${stop.lng},${stop.lat}`);
+      fetchRoute(waypoints).then(route => {
+        if (route) {
+          setRouteCoordinates(route.map(coord => [coord[1], coord[0]]));
+        }
+      });
+    }
+  }, [activeRoute]);
 
   const handleGenerate = async () => {
     setLoading(true);
@@ -143,7 +165,7 @@ export default function App() {
                   </Popup>
                 </Marker>
               ))}
-              <Polyline positions={activeRoute.map(stop => [stop.lat, stop.lng])} color="blue" />
+              {routeCoordinates && <Polyline positions={routeCoordinates} color="blue" />}
             </>)}
           </MapContainer>
         </AppShell.Main>
