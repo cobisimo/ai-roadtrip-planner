@@ -7,6 +7,7 @@ import { drizzle } from 'drizzle-orm/better-sqlite3';
 import Database from 'better-sqlite3';
 import * as schema from './db/schema.js';
 import { eq, desc } from 'drizzle-orm';
+import axios from 'axios';
 
 process.on('uncaughtException', (err) => {
   console.error('Критична грешка приликом покретања:', err);
@@ -42,6 +43,16 @@ const auth = (req: any, res: any, next: any) => {
   } catch { res.status(401).send('Invalid token'); }
 };
 
+const fetchRoute = async (waypoints: string[]) => {
+  try {
+    const response = await axios.get(`https://router.project-osrm.org/route/v1/driving/${waypoints.join(';')}?overview=full&geometries=geojson`);
+    return response.data.routes[0].geometry.coordinates;
+  } catch (error) {
+    console.error('Error fetching route:', error);
+    return null;
+  }
+};
+
 // Руте
 app.post('/api/login', async (req, res) => {
   const { username, password } = req.body;
@@ -64,21 +75,70 @@ app.post('/api/generate', auth, async (req: any, res) => {
     });
 
     const routeData = JSON.parse(completion.choices[0].message.content || '{}');
+    const waypoints = routeData.stops.map(stop => `${stop.lng},${stop.lat}`);
+    const routeCoordinates = await fetchRoute(waypoints);
+
     const result = await db.insert(schema.routes).values({
       userId: req.user.userId,
       title: routeData.title,
       destination: req.body.prompt,
-      data: JSON.stringify(routeData.stops)
+      data: JSON.stringify(routeData.stops),
+      path: JSON.stringify(routeCoordinates.map(coord => [coord[1], coord[0]]))
     }).returning();
     res.json(result[0]);
   } catch (e) { res.status(500).send(e); }
 });
 
 app.get('/api/routes', auth, async (req: any, res) => {
-  const result = await db.select().from(schema.routes)
-    .where(eq(schema.routes.userId, req.user.userId))
-    .orderBy(desc(schema.routes.createdAt));
-  res.json(result);
+  try {
+    const result = await db.select({
+      id: schema.routes.id,
+      userId: schema.routes.userId,
+      title: schema.routes.title,
+      destination: schema.routes.destination,
+      createdAt: schema.routes.createdAt
+    }).from(schema.routes)
+      .where(eq(schema.routes.userId, req.user.userId))
+      .orderBy(desc(schema.routes.createdAt));
+    res.json(result);
+  } catch (error) {
+    console.error('Error fetching routes:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.get('/api/routes/:id', auth, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const result = await db.select().from(schema.routes)
+      .where(eq(schema.routes.id, id))
+      .limit(1);
+
+    if (result.length === 0) {
+      return res.status(404).json({ error: 'Route not found' });
+    }
+
+    res.json(result[0]);
+  } catch (error) {
+    console.error('Error fetching route details:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.delete('/api/routes/:id', auth, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const result = await db.delete(schema.routes)
+      .where(eq(schema.routes.id, id))
+      .returning();
+    if (result.length === 0) {
+      return res.status(404).json({ error: 'Route not found' });
+    }
+    res.json({ message: 'Route removed from history' });
+  } catch (error) {
+    console.error('Error removing route:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 app.listen(3000, () => console.log('Backend running on port 3000'));

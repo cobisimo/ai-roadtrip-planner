@@ -3,7 +3,7 @@ import {
   ScrollArea, Card, Group, Stack, Badge, Center, Title, createTheme
 } from '@mantine/core';
 import { Notifications, notifications } from '@mantine/notifications';
-import { IconCompass, IconSend, IconMapPin } from '@tabler/icons-react';
+import { IconCompass, IconSend, IconMapPin, IconTrash } from '@tabler/icons-react';
 import { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
 import axios from 'axios';
@@ -40,27 +40,6 @@ export default function App() {
 
   useEffect(() => { if (token) loadHistory(); }, [token]);
 
-  const fetchRoute = async (waypoints) => {
-    try {
-      const response = await axios.get(`https://router.project-osrm.org/route/v1/driving/${waypoints.join(';')}?overview=full&geometries=geojson`);
-      return response.data.routes[0].geometry.coordinates;
-    } catch (error) {
-      console.error('Error fetching route:', error);
-      return null;
-    }
-  };
-
-  useEffect(() => {
-    if (activeRoute) {
-      const waypoints = activeRoute.map(stop => `${stop.lng},${stop.lat}`);
-      fetchRoute(waypoints).then(route => {
-        if (route) {
-          setRouteCoordinates(route.map(coord => [coord[1], coord[0]]));
-        }
-      });
-    }
-  }, [activeRoute]);
-
   const handleGenerate = async () => {
     setLoading(true);
     try {
@@ -72,6 +51,35 @@ export default function App() {
     } catch (e) {
       notifications.show({ title: 'Грешка', message: 'Провери бекенд и Llama сервер.', color: 'red' });
     } finally { setLoading(false); }
+  };
+
+  const deleteRoute = async (id) => {
+    try {
+      await api.delete(`/routes/${id}`);
+      loadHistory();
+    } catch (error) {
+      console.error('Error removing route:', error);
+    }
+  };
+
+  const handleRouteClick = async (routeId) => {
+    try {
+      const res = await api.get(`/routes/${routeId}`);
+      const stops = JSON.parse(res.data.data);
+      setActiveRoute(stops);
+
+      // Parse the path data - it's a string containing a JSON array
+      const pathData = JSON.parse(res.data.path);
+      console.log('First few coordinates:', pathData.slice(0, 5));
+      setRouteCoordinates(pathData);
+    } catch (error) {
+      console.error('Error loading route details:', error);
+      notifications.show({
+        title: 'Грешка',
+        message: 'Не могу да учитам детаље руте',
+        color: 'red'
+      });
+    }
   };
 
   if (!token) {
@@ -131,9 +139,16 @@ export default function App() {
           <ScrollArea flex={1}>
             <Stack gap="xs">
               {history.map(r => (
-                <Card key={r.id} withBorder p="sm" radius="md" style={{ cursor: 'pointer' }} onClick={() => setActiveRoute(JSON.parse(r.data))}>
-                  <Text size="sm" fw={600}>{r.title}</Text>
-                  <Text size="xs" c="dimmed">{r.destination}</Text>
+                <Card key={r.id} withBorder p="sm" radius="md" style={{ cursor: 'pointer' }}>
+                  <Group justify="space-between">
+                    <div onClick={() => handleRouteClick(r.id)}>
+                      <Text size="sm" fw={600}>{r.title}</Text>
+                      <Text size="xs" c="dimmed">{r.destination}</Text>
+                    </div>
+                    <Button variant="subtle" color="red" onClick={() => deleteRoute(r.id)}>
+                      <IconTrash size={16} />
+                    </Button>
+                  </Group>
                 </Card>
               ))}
             </Stack>
@@ -159,13 +174,19 @@ export default function App() {
                   <Popup>
                     <div>
                       <Text fw={600}>{stop.city}</Text>
-                      <Text size="sm">{stop.description}</Text>
+                      <Text size="sm">{stop.reason}</Text>
                       {stop.image && <img src={stop.image} alt={stop.city} style={{ width: '100%', marginTop: 8 }} />}
                     </div>
                   </Popup>
                 </Marker>
               ))}
-              {routeCoordinates && <Polyline positions={routeCoordinates} color="blue" />}
+              {routeCoordinates && routeCoordinates.length > 0 && (
+                <Polyline
+                  positions={routeCoordinates}
+                  color="blue"
+                  weight={4}
+                />
+              )}
             </>)}
           </MapContainer>
         </AppShell.Main>

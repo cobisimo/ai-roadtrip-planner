@@ -12,5 +12,6 @@ export const routes = sqliteTable('routes', {
   title: text('title').notNull(),
   destination: text('destination').notNull(),
   data: text('data').notNull(),
+  path: text('path'),
   createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
 });

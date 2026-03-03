@@ -4,6 +4,7 @@
   "description": "",
   "main": "index.js",
   "dependencies": {
+    "axios": "^1.13.6",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.6.2",
     "clsx": "^2.1.1",
@@ -42,6 +43,7 @@
   },
   "scripts": {
     "dev": "tsx --env-file=.env src/server.ts",
+    "seed": "tsx --env-file=.env src/seed.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
