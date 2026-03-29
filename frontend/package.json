@@ -11,15 +11,21 @@
   },
   "dependencies": {
     "@mantine/core": "^8.3.15",
+    "@mantine/form": "^8.3.18",
     "@mantine/hooks": "^8.3.15",
     "@mantine/notifications": "^8.3.15",
     "@tabler/icons-react": "^3.37.1",
+    "@tanstack/query-core": "^5.95.2",
+    "@tanstack/react-query": "^5.95.2",
     "@types/leaflet": "^1.9.21",
     "axios": "^1.13.5",
+    "jotai": "^2.19.0",
+    "jotai-tanstack-query": "^0.11.0",
     "leaflet": "^1.9.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "react-leaflet": "^5.0.0"
+    "react-leaflet": "^5.0.0",
+    "react-router-dom": "^7.13.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
