@@ -67,7 +67,7 @@ app.post('/api/generate', auth, async (req: any, res) => {
   try {
     const completion = await client.chat.completions.create({
       messages: [
-        { role: "system", content: "Ти си планер путовања. Врати ИСКЉУЧИВО JSON: {\"title\": \"Наслов\", \"stops\": [{\"city\": \"Град\", \"lat\": 44, \"lng\": 20, \"description\": \"Опис\", \"reason\": \"Разлог\"}]}" },
+        { role: "system", content: "Ти си планер путовања. Опис и разлог посете објаснити у најмање 3 реченице и да се не понављају. Врати ИСКЉУЧИВО JSON: {\"title\": \"Наслов\", \"stops\": [{\"city\": \"Град\", \"lat\": 44, \"lng\": 20, \"description\": \"Опис\", \"reason\": \"Разлог\"}]}" },
         { role: "user", content: req.body.prompt }
       ],
       model: "mistral-small-latest",

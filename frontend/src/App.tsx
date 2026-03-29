@@ -1,11 +1,13 @@
 import {
   MantineProvider, AppShell, Text, TextInput, Button,
-  ScrollArea, Card, Group, Stack, Badge, Center, Title, createTheme
+  ScrollArea, Card, Group, Stack, Center, Title, createTheme
 } from '@mantine/core';
 import { Notifications, notifications } from '@mantine/notifications';
 import { IconCompass, IconSend, IconMapPin, IconTrash } from '@tabler/icons-react';
 import { useState, useEffect } from 'react';
+import L from 'leaflet';
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
+import { renderToString } from 'react-dom/server';
 import axios from 'axios';
 
 import '@mantine/core/styles.css';
@@ -29,6 +31,15 @@ export default function App() {
     headers: { Authorization: `Bearer ${token}` }
   });
 
+  const iconSvg = renderToString(<IconMapPin />);
+
+  // Create a custom icon using the SVG string
+  const customIcon = L.icon({
+    iconUrl: `data:image/svg+xml;utf8,${encodeURIComponent(iconSvg)}`,
+    iconSize: [32, 32],
+    iconAnchor: [16, 32],
+  });
+
   const loadHistory = async () => {
     try {
       const res = await api.get('/routes');
@@ -45,7 +56,9 @@ export default function App() {
     try {
       const res = await api.post('/generate', { prompt });
       const stops = JSON.parse(res.data.data);
+      const path = JSON.parse(res.data.path);
       setActiveRoute(stops);
+      setRouteCoordinates(path)
       loadHistory();
       notifications.show({ title: 'Успех!', message: 'Путовање је испланирано.', color: 'green' });
     } catch (e) {
@@ -70,7 +83,6 @@ export default function App() {
 
       // Parse the path data - it's a string containing a JSON array
       const pathData = JSON.parse(res.data.path);
-      console.log('First few coordinates:', pathData.slice(0, 5));
       setRouteCoordinates(pathData);
     } catch (error) {
       console.error('Error loading route details:', error);
@@ -170,7 +182,7 @@ export default function App() {
             />
             {activeRoute && (<>
               {activeRoute.map((stop, index) => (
-                <Marker key={index} position={[stop.lat, stop.lng]}>
+                <Marker key={index} position={[stop.lat, stop.lng]} icon={customIcon}>
                   <Popup>
                     <div>
                       <Text fw={600}>{stop.city}</Text>
