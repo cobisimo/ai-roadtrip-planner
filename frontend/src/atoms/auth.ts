@@ -1,14 +1,25 @@
 
 import { atomWithStorage } from 'jotai/utils'
 import { useMutation } from '@tanstack/react-query';
-import axios from 'axios';
 import { useAtom } from 'jotai';
 
-export const tokenAtom = atomWithStorage('token', '');
+export const tokenAtom = atomWithStorage<string | null>('token', null);
 
 const loginUser = async (credentials: { username: string; password: string }) => {
-  const res = await axios.post('http://localhost:3000/api/login', credentials);
-  return res.data.token;
+  const response = await fetch('http://localhost:3000/api/login', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(credentials),
+  });
+
+  if (!response.ok) {
+    throw new Error('Login failed');
+  }
+
+  const data = await response.json();
+  return data.token;
 };
 
 export function useAuth() {
@@ -22,7 +33,7 @@ export function useAuth() {
   });
 
   return {
-    login: loginMutation.mutate,
+    login: loginMutation.mutateAsync,
     isLoading: loginMutation.isPending,
     error: loginMutation.error,
   };

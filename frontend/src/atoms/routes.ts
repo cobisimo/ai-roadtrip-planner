@@ -85,11 +85,11 @@ export function useRoutes() {
   return {
     routes,
     isLoadingRoutes,
-    createRoute: createRouteMutation.mutate,
+    createRoute: createRouteMutation.mutateAsync,
     isCreatingRoute: createRouteMutation.isPending,
-    deleteRoute: deleteRouteMutation.mutate,
+    deleteRoute: deleteRouteMutation.mutateAsync,
     isDeletingRoute: deleteRouteMutation.isPending,
-    getRouteDetails: getRouteDetailsMutation.mutate,
+    getRouteDetails: getRouteDetailsMutation.mutateAsync,
     isGettingRouteDetails: getRouteDetailsMutation.isPending,
   };
 }
