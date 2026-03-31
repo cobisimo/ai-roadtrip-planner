@@ -1,10 +1,12 @@
 import {
-  AppShell, Text, TextInput, Button,
-  ScrollArea, Card, Group, Stack
+  AppShell, Text, Button,
+  ScrollArea, Card, Group, Stack,
+  ActionIcon,
+  Affix,
+  Burger
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconCompass, IconSend, IconMapPin, IconTrash } from '@tabler/icons-react';
-import { useState } from 'react';
+import { IconCompass, IconMapPin, IconTrash, IconPlus, IconLogout } from '@tabler/icons-react';
 import L from 'leaflet';
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
 import { renderToString } from 'react-dom/server';
@@ -13,16 +15,15 @@ import { useAtom } from 'jotai';
 import { tokenAtom } from '../../../atoms/auth';
 import { activeRouteAtom, routeCoordinatesAtom, useRoutes } from '../../../atoms/routes';
 import { MapZoomToRoute } from '../../../components/MapZoomToRoute';
+import { useDisclosure } from '@mantine/hooks';
 
 export function MapPage() {
   const [, setToken] = useAtom(tokenAtom);
   const [activeRoute] = useAtom(activeRouteAtom);
   const [routeCoordinates] = useAtom(routeCoordinatesAtom);
-  const [prompt, setPrompt] = useState('');
+  const [opened, { toggle, close }] = useDisclosure();
   const {
     routes,
-    createRoute,
-    isCreatingRoute,
     deleteRoute,
     isDeletingRoute,
     getRouteDetails,
@@ -39,18 +40,10 @@ export function MapPage() {
     iconAnchor: [16, 32],
   });
 
-  const handleGenerate = async () => {
-    try {
-      await createRoute(prompt);
-      notifications.show({ title: 'Успех!', message: 'Путовање је испланирано.', color: 'green' });
-    } catch (e) {
-      notifications.show({ title: 'Грешка', message: 'Провери бекенд и Llama сервер.', color: 'red' });
-    }
-  };
-
   const handleRouteClick = async (routeId: number) => {
     try {
       await getRouteDetails(routeId);
+      close();
     } catch (error) {
       console.error('Error loading route details:', error);
       notifications.show({
@@ -67,31 +60,19 @@ export function MapPage() {
   };
   return (
     <AppShell
-      header={{ height: 70 }}
-      navbar={{ width: 300, breakpoint: 'sm' }}
+      navbar={{ width: 300, breakpoint: 'sm', collapsed: { mobile: !opened } }}
       padding="md"
     >
-      <AppShell.Header p="md" bg="indigo.6">
-        <Group h="100%" justify="space-between">
-          <Group>
-            <IconCompass color="white" />
-            <Text c="white" fw={700} size="xl">ПЛАНЕР</Text>
-          </Group>
-          <Group style={{ flex: 1, maxWidth: 600 }}>
-            <TextInput
-              style={{ flex: 1 }}
-              placeholder="Нпр. Пут од Београда до Прага..."
-              value={prompt}
-              onChange={(e) => setPrompt(e.currentTarget.value)}
-            />
-            <Button variant="white" onClick={handleGenerate} loading={isCreatingRoute} leftSection={<IconSend size={16} />}>
-              Планирај
-            </Button>
-          </Group>
+      <Affix position={{ top: 20, right: 20 }} zIndex={1002}>
+        <ActionIcon radius="xl" color='black' hiddenFrom="sm" size={60}>
+          <Burger opened={opened} onClick={toggle} size="md" aria-label="Toggle navigation" />
+        </ActionIcon>
+      </Affix>
+      <AppShell.Navbar p="md" zIndex={1001}>
+        <Group>
+          <IconCompass color="white" />
+          <Text c="white" fw={700} size="xl">ПЛАНЕР</Text>
         </Group>
-      </AppShell.Header>
-
-      <AppShell.Navbar p="md">
         <Text fw={600} mb="md">Претходне руте</Text>
         <ScrollArea flex={1}>
           <Stack gap="xs">
@@ -111,20 +92,18 @@ export function MapPage() {
           </Stack>
         </ScrollArea>
         <Button variant="light" color="red" mt="md" fullWidth onClick={handleLogout}>
-          Одјава
+          <IconLogout stroke={1.5} />
+          <span>Одјава</span>
         </Button>
       </AppShell.Navbar>
 
-      <AppShell.Main style={{ display: 'flex' }}>
+      <AppShell.Main p={0} style={{ display: 'flex' }}>
         <MapContainer
           style={{ flex: 1 }}
           center={activeRoute ? [activeRoute[0].lat, activeRoute[0].lng] : [43.89139, 20.34972]}
           zoom={activeRoute ? 6 : 7}
         >
-          <TileLayer
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          />
+          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
           {activeRoute && (<>
             {activeRoute.map((stop, index) => (
               <Marker key={index} position={[stop.lat, stop.lng]} icon={customIcon}>
@@ -149,6 +128,11 @@ export function MapPage() {
             )}
           </>)}
         </MapContainer>
+        <Affix position={{ bottom: 20, right: 20 }} zIndex={1000}>
+          <ActionIcon radius="xl" size={60} onClick={() => navigate('/prompt')}>
+            <IconPlus stroke={1.5} size={30} />
+          </ActionIcon>
+        </Affix>
       </AppShell.Main>
     </AppShell>
   );

@@ -33,7 +33,7 @@ export function AuthenticationForm({ onLogin, isLoading }: { onLogin: () => void
   return (
     <Paper radius="md" p="lg" withBorder>
       <Text size="lg" fw={500} c="bright">
-        Welcome to Mantine, {type} with
+        Добро дошли у ВИ планер, {type} са
       </Text>
 
       <Group grow mb="md" mt="md">
@@ -41,7 +41,7 @@ export function AuthenticationForm({ onLogin, isLoading }: { onLogin: () => void
       </Group>
 
       <Divider
-        label="Or continue with email"
+        label="или наставите са адресом ел. поште"
         labelPosition="center"
         my="lg"
         styles={{ label: { color: 'var(--mantine-color-bright)', opacity: 0.85 } }}
@@ -51,8 +51,8 @@ export function AuthenticationForm({ onLogin, isLoading }: { onLogin: () => void
         <Stack>
           {type === 'register' && (
             <TextInput
-              label="Name"
-              placeholder="Your name"
+              label="Име"
+              placeholder="Ваше име"
               value={form.values.name}
               onChange={(event) => form.setFieldValue('name', event.currentTarget.value)}
               radius="md"
@@ -61,27 +61,27 @@ export function AuthenticationForm({ onLogin, isLoading }: { onLogin: () => void
 
           <TextInput
             required
-            label="Email"
+            label="Ел. пошта"
             placeholder="hello@mantine.dev"
             value={form.values.email}
             onChange={(event) => form.setFieldValue('email', event.currentTarget.value)}
-            error={form.errors.email && 'Invalid email'}
+            error={form.errors.email && 'Адреса ел. поште није исправна'}
             radius="md"
           />
 
           <PasswordInput
             required
-            label="Password"
-            placeholder="Your password"
+            label="Лозинка"
+            placeholder="Ваша лозинка"
             value={form.values.password}
             onChange={(event) => form.setFieldValue('password', event.currentTarget.value)}
-            error={form.errors.password && 'Password should include at least 6 characters'}
+            error={form.errors.password && 'Лозинка треба садржи најмање 6 карактера'}
             radius="md"
           />
 
           {type === 'register' && (
             <Checkbox
-              label="I accept terms and conditions"
+              label="Прихватам услове коришћења"
               checked={form.values.terms}
               onChange={(event) => form.setFieldValue('terms', event.currentTarget.checked)}
             />
@@ -98,8 +98,8 @@ export function AuthenticationForm({ onLogin, isLoading }: { onLogin: () => void
             size="xs"
           >
             {type === 'register'
-              ? 'Already have an account? Login'
-              : "Don't have an account? Register"}
+              ? 'Уколико већ имате налог, пријавите се'
+              : "Уколико немате налог, региструјте се"}
           </Anchor>
           <Button type="submit" loading={isLoading} radius="xl">
             {upperFirst(type)}

@@ -12,6 +12,7 @@ import { Route, BrowserRouter as Router, Routes } from 'react-router-dom';
 import { LoginPage } from './pages/Auth/LoginPage/LoginPage';
 import { MapPage } from './pages/Map/MapPage/MapPage';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { PromptPage } from './pages/Map/PromptPage';
 
 const theme = createTheme({
   primaryColor: 'indigo',
@@ -28,6 +29,7 @@ export default function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route element={<ProtectedRoute />}>
               <Route path="/map" element={<MapPage />} />
+              <Route path="/prompt" element={<PromptPage />} />
             </Route>
             <Route path="/" element={<LoginPage />} />
           </Routes>

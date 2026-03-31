@@ -1,29 +1,31 @@
 import { IconArrowRight, IconSearch } from '@tabler/icons-react';
-import { ActionIcon, TextInput, useMantineTheme, type TextInputProps } from '@mantine/core';
+import { ActionIcon, TextInput, useMantineTheme } from '@mantine/core';
 
-export function SimpleInput(props: TextInputProps) {
+export function SimpleInput({ onChange, onClick }: { onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; onClick: () => void }) {
   const theme = useMantineTheme();
 
   return (
     <TextInput
       radius="xl"
-      size="md"
-      placeholder="Search questions"
-      rightSectionWidth={42}
-      leftSection={<IconSearch size={18} stroke={1.5} />}
+      size="xl"
+      placeholder="Нпр. Пут од Београда до Прага..."
+      rightSectionWidth={60}
+      leftSection={<IconSearch size={24} stroke={1.5} />}
       rightSection={
         <ActionIcon
-          size={32}
+          size={48}
           radius="xl"
           color={theme.primaryColor}
           variant="filled"
           aria-label="Search"
+          onClick={onClick}
         >
-          <IconArrowRight size={18} stroke={1.5} />
+          <IconArrowRight size={24} stroke={1.5} />
         </ActionIcon>
       }
+      onChange={onChange}
+      flex={1}
       aria-label="Search questions"
-      {...props}
     />
   );
 }
