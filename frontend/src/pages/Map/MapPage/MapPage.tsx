@@ -3,23 +3,25 @@ import {
   ScrollArea, Card, Group, Stack,
   ActionIcon,
   Affix,
-  Burger
+  Burger,
+  Accordion
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconCompass, IconMapPin, IconTrash, IconPlus, IconLogout } from '@tabler/icons-react';
+import { IconTrash, IconPlus, IconLogout } from '@tabler/icons-react';
 import L from 'leaflet';
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
-import { renderToString } from 'react-dom/server';
 import { useNavigate } from 'react-router-dom';
 import { useAtom } from 'jotai';
 import { tokenAtom } from '../../../atoms/auth';
 import { activeRouteAtom, routeCoordinatesAtom, useRoutes } from '../../../atoms/routes';
 import { MapZoomToRoute } from '../../../components/MapZoomToRoute';
 import { useDisclosure } from '@mantine/hooks';
+import flagIconSvg from '../../../assets/flag.svg?raw';
+import logoImg from '../../../assets/logo.png';
 
 export function MapPage() {
   const [, setToken] = useAtom(tokenAtom);
-  const [activeRoute] = useAtom(activeRouteAtom);
+  const [activeRoute, setActiveRoute] = useAtom(activeRouteAtom);
   const [routeCoordinates] = useAtom(routeCoordinatesAtom);
   const [opened, { toggle, close }] = useDisclosure();
   const {
@@ -31,16 +33,14 @@ export function MapPage() {
 
   const navigate = useNavigate();
 
-  const iconSvg = renderToString(<IconMapPin />);
-
   // Create a custom icon using the SVG string
   const customIcon = L.icon({
-    iconUrl: `data:image/svg+xml;utf8,${encodeURIComponent(iconSvg)}`,
-    iconSize: [32, 32],
-    iconAnchor: [16, 32],
+    iconUrl: `data:image/svg+xml;utf8,${encodeURIComponent(flagIconSvg)}`,
+    iconSize: [38, 38],
+    iconAnchor: [3, 40],
   });
 
-  const handleRouteClick = async (routeId: number) => {
+  const selectRoute = async (routeId: number) => {
     try {
       await getRouteDetails(routeId);
       close();
@@ -54,10 +54,15 @@ export function MapPage() {
     }
   };
 
+  const deselectRoute = async () => {
+    setActiveRoute(null);
+  };
+
   const handleLogout = async () => {
     setToken('');
     navigate('/');
   };
+
   return (
     <AppShell
       navbar={{ width: 300, breakpoint: 'sm', collapsed: { mobile: !opened } }}
@@ -69,26 +74,37 @@ export function MapPage() {
         </ActionIcon>
       </Affix>
       <AppShell.Navbar p="md" zIndex={1001}>
-        <Group>
-          <IconCompass color="white" />
-          <Text c="white" fw={700} size="xl">ПЛАНЕР</Text>
+        <Group mb="md">
+          <img src={logoImg} alt="logo" style={{ width: 266 }} />
         </Group>
-        <Text fw={600} mb="md">Претходне руте</Text>
         <ScrollArea flex={1}>
           <Stack gap="xs">
-            {routes?.map(r => (
-              <Card key={r.id} withBorder p="sm" radius="md" style={{ cursor: 'pointer' }}>
-                <Group justify="space-between">
-                  <div onClick={() => handleRouteClick(r.id)}>
-                    <Text size="sm" fw={600}>{r.title}</Text>
-                    <Text size="xs" c="dimmed">{r.destination}</Text>
-                  </div>
-                  <Button variant="subtle" color="red" onClick={() => deleteRoute(r.id)} loading={isDeletingRoute}>
-                    <IconTrash size={16} />
-                  </Button>
-                </Group>
-              </Card>
-            ))}
+            {activeRoute ?
+              <>
+                <Button onClick={deselectRoute}>Back</Button>
+                <Accordion>
+                  {
+                    activeRoute?.map(item => (
+                      <Accordion.Item key={item.city} value={item.city}>
+                        <Accordion.Control>{item.city}</Accordion.Control>
+                        <Accordion.Panel>{item.description}</Accordion.Panel>
+                      </Accordion.Item>
+                    ))}
+                </Accordion>
+              </>
+              : routes?.map(r => (
+                <Card key={r.id} withBorder p="sm" radius="md" style={{ cursor: 'pointer' }}>
+                  <Group justify="space-between">
+                    <div onClick={() => selectRoute(r.id)}>
+                      <Text size="sm" fw={600}>{r.title}</Text>
+                      <Text size="xs" c="dimmed">{r.destination}</Text>
+                    </div>
+                    <Button variant="subtle" color="red" onClick={() => deleteRoute(r.id)} loading={isDeletingRoute}>
+                      <IconTrash size={16} />
+                    </Button>
+                  </Group>
+                </Card>
+              ))}
           </Stack>
         </ScrollArea>
         <Button variant="light" color="red" mt="md" fullWidth onClick={handleLogout}>
