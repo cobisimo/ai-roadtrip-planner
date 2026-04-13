@@ -6,6 +6,7 @@ import {
   Burger,
   Accordion
 } from '@mantine/core';
+import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { IconTrash, IconPlus, IconLogout } from '@tabler/icons-react';
 import L from 'leaflet';
@@ -18,11 +19,13 @@ import { MapZoomToRoute } from '../../../components/MapZoomToRoute';
 import { useDisclosure } from '@mantine/hooks';
 import flagIconSvg from '../../../assets/flag.svg?raw';
 import logoImg from '../../../assets/logo.png';
+import { useState } from 'react';
 
 export function MapPage() {
   const [, setToken] = useAtom(tokenAtom);
   const [activeRoute, setActiveRoute] = useAtom(activeRouteAtom);
   const [routeCoordinates] = useAtom(routeCoordinatesAtom);
+  const [activeRouteId, setActiveRouteId] = useState<string | null>(null);
   const [opened, { toggle, close }] = useDisclosure();
   const {
     routes,
@@ -42,6 +45,7 @@ export function MapPage() {
 
   const selectRoute = async (routeId: number) => {
     try {
+      setActiveRouteId(routeId.toString());
       await getRouteDetails(routeId);
       close();
     } catch (error) {
@@ -63,6 +67,22 @@ export function MapPage() {
     navigate('/');
   };
 
+  const openDeleteModal = () => {
+    if (!activeRouteId) return;
+    return modals.openConfirmModal({
+      title: 'Да ли сте сигурни да желите да избришете руту?',
+      centered: true,
+      labels: { confirm: 'Избриши', cancel: "Одустани" },
+      confirmProps: { color: 'red' },
+      zIndex: 1000,
+      onConfirm: () => {
+        deleteRoute(activeRouteId);
+        setActiveRoute(null);
+        setActiveRouteId(null);
+      },
+    });
+  }
+
   return (
     <AppShell
       navbar={{ width: 300, breakpoint: 'sm', collapsed: { mobile: !opened } }}
@@ -81,7 +101,12 @@ export function MapPage() {
           <Stack gap="xs">
             {activeRoute ?
               <>
-                <Button onClick={deselectRoute}>Back</Button>
+                <Group justify="space-between">
+                  <Button onClick={deselectRoute}>Back</Button>
+                  <Button variant="subtle" color="red" onClick={openDeleteModal} loading={isDeletingRoute}>
+                    <IconTrash size={16} />
+                  </Button>
+                </Group>
                 <Accordion>
                   {
                     activeRoute?.map(item => (
@@ -94,15 +119,10 @@ export function MapPage() {
               </>
               : routes?.map(r => (
                 <Card key={r.id} withBorder p="sm" radius="md" style={{ cursor: 'pointer' }}>
-                  <Group justify="space-between">
-                    <div onClick={() => selectRoute(r.id)}>
-                      <Text size="sm" fw={600}>{r.title}</Text>
-                      <Text size="xs" c="dimmed">{r.destination}</Text>
-                    </div>
-                    <Button variant="subtle" color="red" onClick={() => deleteRoute(r.id)} loading={isDeletingRoute}>
-                      <IconTrash size={16} />
-                    </Button>
-                  </Group>
+                  <div onClick={() => selectRoute(r.id)}>
+                    <Text size="sm" fw={600}>{r.title}</Text>
+                    <Text size="xs" c="dimmed">{r.destination}</Text>
+                  </div>
                 </Card>
               ))}
           </Stack>

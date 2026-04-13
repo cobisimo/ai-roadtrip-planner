@@ -3,6 +3,7 @@ import {
   ColorSchemeScript,
   MantineProvider,
 } from '@mantine/core';
+import { ModalsProvider } from '@mantine/modals';
 import { Notifications } from '@mantine/notifications';
 
 import '@mantine/core/styles.css';
@@ -24,6 +25,7 @@ export default function App() {
       <ColorSchemeScript defaultColorScheme="auto" />
       <MantineProvider defaultColorScheme="auto" theme={theme}>
         <Notifications />
+        <ModalsProvider />
         <Router>
           <Routes>
             <Route path="/login" element={<LoginPage />} />

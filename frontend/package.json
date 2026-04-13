@@ -10,10 +10,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@mantine/core": "^8.3.15",
-    "@mantine/form": "^8.3.18",
-    "@mantine/hooks": "^8.3.15",
-    "@mantine/notifications": "^8.3.15",
+    "@mantine/core": "^9.0.2",
+    "@mantine/form": "^9.0.2",
+    "@mantine/hooks": "^9.0.2",
+    "@mantine/modals": "^9.0.2",
+    "@mantine/notifications": "^9.0.2",
     "@tabler/icons-react": "^3.37.1",
     "@tanstack/query-core": "^5.95.2",
     "@tanstack/react-query": "^5.95.2",
