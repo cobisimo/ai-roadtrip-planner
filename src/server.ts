@@ -59,7 +59,6 @@ const fetchRoute = async (waypoints: string[]) => {
   }
 };
 
-// Руте
 app.post('/api/login', async (req, res) => {
   const { username, password } = req.body;
   const user = sqlite.prepare('SELECT * FROM users WHERE username = ?').get(username) as any;
@@ -67,6 +66,82 @@ app.post('/api/login', async (req, res) => {
     const token = jwt.sign({ userId: user.id }, JWT_SECRET);
     res.json({ token });
   } else { res.status(401).send('Wrong credentials'); }
+});
+
+app.post('/api/register', async (req, res) => {
+  const { username, password } = req.body;
+
+  if (!username || !password) {
+    return res.status(400).send('Username and password are required.');
+  }
+
+  try {
+    const existingUser = sqlite.prepare('SELECT * FROM users WHERE username = ?').get(username);
+    if (existingUser) {
+      return res.status(409).send('Username already exists.');
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const result = sqlite.prepare('INSERT INTO users (username, password) VALUES (?, ?)').run(username, hashedPassword);
+
+    res.status(201).json({ message: 'User registered successfully', userId: result.lastInsertRowid });
+  } catch (error) {
+    console.error('Error during user registration:', error);
+    res.status(500).send('Internal server error.');
+  }
+});
+
+app.post('/api/forgot-password', async (req, res) => {
+  const { username } = req.body;
+
+  try {
+    const user = sqlite.prepare('SELECT * FROM users WHERE username = ?').get(username) as any;
+    if (!user) {
+      // For security, always respond with a generic success message
+      // to avoid leaking information about existing usernames.
+      return res.status(200).send('If a user with that username exists, a password reset link has been sent.');
+    }
+
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const resetTokenExpiry = Date.now() + 3600000; // 1 hour expiry
+
+    sqlite.prepare('UPDATE users SET resetToken = ?, resetTokenExpiry = ? WHERE id = ?').run(resetToken, resetTokenExpiry, user.id);
+
+    console.log(`Password reset token for ${username}: ${resetToken}`);
+    // In a real application, you would email this token to the user.
+    // Example: sendEmail(user.email, resetTokenLink);
+
+    res.status(200).send('If a user with that username exists, a password reset link has been sent.');
+  } catch (error) {
+    console.error('Error during forgot password request:', error);
+    res.status(500).send('Internal server error.');
+  }
+});
+
+app.post('/api/reset-password', async (req, res) => {
+  const { username, token, newPassword } = req.body;
+
+  if (!username || !token || !newPassword) {
+    return res.status(400).send('Username, token, and new password are required.');
+  }
+
+  try {
+    const user = sqlite.prepare('SELECT * FROM users WHERE username = ?').get(username) as any;
+
+    if (!user || user.resetToken !== token || user.resetTokenExpiry < Date.now()) {
+      return res.status(400).send('Invalid or expired reset token.');
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // Update password and clear reset token fields
+    sqlite.prepare('UPDATE users SET password = ?, resetToken = NULL, resetTokenExpiry = NULL WHERE id = ?').run(hashedPassword, user.id);
+
+    res.status(200).send('Password has been reset successfully.');
+  } catch (error) {
+    console.error('Error during password reset:', error);
+    res.status(500).send('Internal server error.');
+  }
 });
 
 app.post('/api/generate', auth, async (req: any, res) => {
