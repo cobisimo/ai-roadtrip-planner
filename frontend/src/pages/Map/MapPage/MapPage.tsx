@@ -89,9 +89,18 @@ export function MapPage() {
       padding="md"
     >
       <Affix position={{ top: 20, right: 20 }} zIndex={1002}>
-        <ActionIcon radius="xl" color='black' hiddenFrom="sm" size={60}>
-          <Burger opened={opened} onClick={toggle} size="md" aria-label="Toggle navigation" />
-        </ActionIcon>
+        <Burger opened={opened} onClick={toggle} style={{
+          '--ai-size': 'calc(3.75rem * var(--mantine-scale))',
+          border: '1px solid var(--mantine-color-default-border)',
+          borderRadius: 'var(--mantine-radius-xl)',
+          backgroundColor: 'var(--mantine-color-default)',
+          width: 'var(--ai-size)',
+          height: 'var(--ai-size)',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }} hiddenFrom="sm" size="md" aria-label="Toggle navigation" />
       </Affix>
       <AppShell.Navbar p="md" zIndex={1001}>
         <Group mb="md">

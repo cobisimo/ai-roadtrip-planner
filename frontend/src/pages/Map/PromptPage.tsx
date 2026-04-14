@@ -27,9 +27,18 @@ export function PromptPage() {
   return (
     <Container size={640} style={{ display: 'flex', alignItems: 'center', height: '100vh' }}>
       <Affix position={{ top: 20, right: 20 }} zIndex={1001}>
-        <ActionIcon radius="xl" color='black' size={60}>
-          <Burger opened={true} onClick={() => navigate('/map')} size="lg" aria-label="Toggle navigation" />
-        </ActionIcon>
+        <Burger opened={true} onClick={() => navigate('/map')} style={{
+          '--ai-size': 'calc(3.75rem * var(--mantine-scale))',
+          border: '1px solid var(--mantine-color-default-border)',
+          borderRadius: 'var(--mantine-radius-xl)',
+          backgroundColor: 'var(--mantine-color-default)',
+          width: 'var(--ai-size)',
+          height: 'var(--ai-size)',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }} size="md" aria-label="Toggle navigation" />
       </Affix>
       <LoadingOverlay visible={isCreatingRoute} zIndex={1000} overlayProps={{ radius: "sm", blur: 2 }} />
       <SimpleInput onChange={(e) => setPrompt(e.currentTarget.value)} onClick={handleGenerate} />
