@@ -28,10 +28,16 @@ const JWT_SECRET = 'm3_chip_power_123';
 app.use(cors());
 app.use(express.json());
 
+// const client = new OpenAI({
+//   baseURL: 'https://api.mistral.ai/v1',
+//   apiKey: process.env.MISTRAL_API_KEY,
+// });
+
 const client = new OpenAI({
-  baseURL: 'https://api.mistral.ai/v1',
-  apiKey: process.env.MISTRAL_API_KEY,
+  baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai',
+  apiKey: process.env.GEMINI_API_KEY,
 });
+
 
 // Middleware за аутентификацију
 const auth = (req: any, res: any, next: any) => {
@@ -70,7 +76,8 @@ app.post('/api/generate', auth, async (req: any, res) => {
         { role: "system", content: "Ти си планер путовања. Опис и разлог посете објаснити у најмање 3 реченице и да се не понављају. Врати ИСКЉУЧИВО JSON: {\"title\": \"Наслов\", \"stops\": [{\"city\": \"Град\", \"lat\": 44, \"lng\": 20, \"description\": \"Опис\", \"reason\": \"Разлог\"}]}" },
         { role: "user", content: req.body.prompt }
       ],
-      model: "mistral-small-latest",
+      // model: "mistral-small-latest",
+      model: "gemini-3-flash-preview",
       response_format: { type: "json_object" },
     });
 
