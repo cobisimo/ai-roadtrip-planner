@@ -9,7 +9,7 @@ import {
 } from '@mantine/core';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
-import { IconTrash, IconPlus, IconLogout, IconSun, IconMoon } from '@tabler/icons-react';
+import { IconTrash, IconPlus, IconLogout, IconSun, IconMoon, IconArrowBackUp } from '@tabler/icons-react';
 import L from 'leaflet';
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
 import { useNavigate } from 'react-router-dom';
@@ -111,16 +111,18 @@ export function MapPage() {
         }} hiddenFrom="sm" size="md" aria-label="Toggle navigation" />
       </Affix>
       <AppShell.Navbar p="md" zIndex={1001}>
-        <Group mb="md">
-          <img src={colorScheme === 'dark' ? logoImgDark : logoImg} alt="logo" style={{ width: 266 }} />
+        <Group mb="md" justify="center">
+          <img src={preferredColorScheme === 'dark' ? logoImgDark : logoImg} alt="logo" style={{ width: 266 }} />
         </Group>
         <ScrollArea flex={1}>
           <Stack gap="xs">
             {activeRoute ?
               <>
                 <Group justify="space-between">
-                  <Button onClick={deselectRoute}>Назад</Button>
-                  <Button variant="subtle" color="red" onClick={openDeleteModal} loading={isDeletingRoute}>
+                  <Button onClick={deselectRoute}>
+                    <IconArrowBackUp size={16} />
+                  </Button>
+                  <Button color="red" onClick={openDeleteModal} loading={isDeletingRoute}>
                     <IconTrash size={16} />
                   </Button>
                 </Group>
@@ -158,7 +160,7 @@ export function MapPage() {
               ))}
           </Stack>
         </ScrollArea>
-        <Button variant="light" color="red" mt="md" fullWidth onClick={handleLogout}>
+        <Button variant="light" color="orange" mt="md" fullWidth onClick={handleLogout}>
           <IconLogout stroke={1.5} />
           <span>Одјава</span>
         </Button>

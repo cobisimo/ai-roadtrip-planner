@@ -1,5 +1,6 @@
 import { IconArrowRight, IconSearch } from '@tabler/icons-react';
 import { ActionIcon, TextInput, useMantineTheme } from '@mantine/core';
+import { getHotkeyHandler } from '@mantine/hooks';
 
 export function SimpleInput({ onChange, onClick }: { onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; onClick: () => void }) {
   const theme = useMantineTheme();
@@ -24,6 +25,9 @@ export function SimpleInput({ onChange, onClick }: { onChange: (e: React.ChangeE
         </ActionIcon>
       }
       onChange={onChange}
+      onKeyDown={getHotkeyHandler([
+        ['Enter', onClick],
+      ])}
       flex={1}
       aria-label="Search questions"
     />
