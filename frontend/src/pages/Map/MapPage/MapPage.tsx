@@ -9,7 +9,7 @@ import {
 } from '@mantine/core';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
-import { IconTrash, IconPlus, IconLogout } from '@tabler/icons-react';
+import { IconTrash, IconPlus, IconLogout, IconSun, IconMoon } from '@tabler/icons-react';
 import L from 'leaflet';
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
 import { useNavigate } from 'react-router-dom';
@@ -17,16 +17,18 @@ import { useAtom } from 'jotai';
 import { tokenAtom } from '../../../atoms/auth';
 import { activeRouteAtom, routeCoordinatesAtom, useRoutes } from '../../../atoms/routes';
 import { MapZoomToRoute } from '../../../components/MapZoomToRoute';
-import { useDisclosure } from '@mantine/hooks';
+import { useColorScheme, useDisclosure } from '@mantine/hooks';
 import flagIconSvg from '../../../assets/flag.svg?raw';
 import logoImg from '../../../assets/logo.png';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 export function MapPage() {
   const [, setToken] = useAtom(tokenAtom);
   const [activeRoute, setActiveRoute] = useAtom(activeRouteAtom);
   const [routeCoordinates] = useAtom(routeCoordinatesAtom);
   const [activeRouteId, setActiveRouteId] = useState<string | null>(null);
+  const preferredColorScheme = useColorScheme();
+  const [colorScheme, setColorScheme] = useState(preferredColorScheme);
   const [opened, { toggle, close }] = useDisclosure();
   const {
     routes,
@@ -36,6 +38,10 @@ export function MapPage() {
   } = useRoutes();
 
   const navigate = useNavigate();
+
+  useEffect(() => {
+    setColorScheme(preferredColorScheme);
+  }, [preferredColorScheme]);
 
   // Create a custom icon using the SVG string
   const customIcon = L.icon({
@@ -163,7 +169,7 @@ export function MapPage() {
           center={activeRoute ? [activeRoute[0].lat, activeRoute[0].lng] : [43.89139, 20.34972]}
           zoom={activeRoute ? 6 : 7}
         >
-          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+          <TileLayer url={colorScheme === 'dark' ? "https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png" : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"} />
           {activeRoute && (<>
             {activeRoute.map((stop, index) => (
               <Marker key={index} position={[stop.lat, stop.lng]} icon={customIcon}>
@@ -188,6 +194,18 @@ export function MapPage() {
             )}
           </>)}
         </MapContainer>
+
+        <Affix position={{ top: 20, right: 20 }} zIndex={1000}>
+          <ActionIcon
+            onClick={() => setColorScheme(colorScheme === 'dark' ? 'light' : 'dark')}
+            variant="default"
+            radius="xl"
+            size={60}
+            aria-label="Toggle color scheme"
+          >
+            {colorScheme === 'dark' ? <IconSun stroke={1.5} size={30} /> : <IconMoon stroke={1.5} size={30} />}
+          </ActionIcon>
+        </Affix>
         <Affix position={{ bottom: 20, right: 20 }} zIndex={1000}>
           <ActionIcon radius="xl" size={60} onClick={() => navigate('/prompt')}>
             <IconPlus stroke={1.5} size={30} />
