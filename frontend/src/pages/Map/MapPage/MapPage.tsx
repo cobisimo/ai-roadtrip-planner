@@ -120,14 +120,14 @@ export function MapPage() {
                 <Accordion>
                   {
                     activeRoute?.map(item => (
-                      <Accordion.Item key={item.place ?? item.city} value={item.place ?? item.city}>
-                        <Accordion.Control>{item.place ?? item.city}</Accordion.Control>
+                      <Accordion.Item key={item.place} value={item.place}>
+                        <Accordion.Control>{item.place}</Accordion.Control>
                         <Accordion.Panel>
                           <Stack gap="sm">
                             {item.image && (
                               <Image
                                 src={item.image}
-                                alt={item.place ?? item.city}
+                                alt={item.place}
                                 radius="md"
                                 mah={180}
                                 fit="cover"
@@ -169,9 +169,9 @@ export function MapPage() {
               <Marker key={index} position={[stop.lat, stop.lng]} icon={customIcon}>
                 <Popup>
                   <div>
-                    <Text fw={600}>{stop.place ?? stop.city}</Text>
+                    <Text fw={600}>{stop.place}</Text>
                     <Text size="sm">{stop.reason}</Text>
-                    {stop.image && <img src={stop.image} alt={stop.place ?? stop.city} style={{ width: '100%', marginTop: 8 }} />}
+                    {stop.image && <img src={stop.image} alt={stop.place} style={{ width: '100%', marginTop: 8 }} />}
                   </div>
                 </Popup>
               </Marker>

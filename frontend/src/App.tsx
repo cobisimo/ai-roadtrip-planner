@@ -24,7 +24,7 @@ export default function App() {
     <>
       <ColorSchemeScript defaultColorScheme="auto" />
       <MantineProvider defaultColorScheme="auto" theme={theme}>
-        <Notifications />
+        <Notifications position="top-right" />
         <ModalsProvider />
         <Router>
           <Routes>

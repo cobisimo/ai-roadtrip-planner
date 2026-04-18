@@ -8,7 +8,7 @@ const features = [
   {
     icon: IconRoute,
     title: 'Паметно вођене руте',
-    description: 'Опишите жељено путовање, а апликација га претвара у руту са градовима, описима и разлозима за свако стајање.',
+    description: 'Опишите жељено путовање, а апликација га претвара у руту са местима, описима и разлозима за свако стајање.',
   },
   {
     icon: IconDeviceMobile,
@@ -29,12 +29,12 @@ export function LoginPage() {
         <div className={classes.layout}>
           <section className={classes.heroPanel}>
             <div className={classes.heroCard}>
-              <Text className={classes.heroEyebrow}>АИ ПЛАНЕР ПУТОВАЊА</Text>
+              <Text className={classes.heroEyebrow}>AI ПЛАНЕР ПУТОВАЊА</Text>
               <Title order={1} className={classes.heroTitle}>
-                Испланирајте путовање, означите стајалишта и сачувајте целу руту на мапи.
+                Испланирајте путовање уз помоћ вештачке интелигенције.
               </Title>
               <Text className={classes.heroText}>
-                Од викенд бекства до дужег road trip-а, апликација вам помаже да брзо добијете предлог руте, прегледате
+                Од кратког бекства за викенд до дужег путовања, апликација вам помаже да брзо добијете предлог руте, прегледате
                 кључне тачке и наставите планирање кад год вам затреба.
               </Text>
 
@@ -59,7 +59,7 @@ export function LoginPage() {
           <section className={classes.formPanel}>
             <Stack gap="lg">
               <div className={classes.brandBlock}>
-                <img src={logoImg} alt="АИ Планер Путовања" className={classes.logo} />
+                <img src={logoImg} alt="AI Планер Путовања" className={classes.logo} />
                 <Text className={classes.brandText}>
                   Пријавите се или направите налог да бисте сачували своје руте и наставили планирање путовања.
                 </Text>

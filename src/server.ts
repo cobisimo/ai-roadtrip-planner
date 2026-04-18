@@ -41,7 +41,6 @@ const client = new OpenAI({
 
 type RouteStop = {
   place: string;
-  city?: string;
   lat: number;
   lng: number;
   description: string;
@@ -78,7 +77,7 @@ const normalizeThumbnailUrl = (url?: string) => {
   return url.replace('60px', '500px').replace('//', 'https://');
 };
 
-const getStopSearchLabel = (stop: RouteStop) => stop.place?.trim() || stop.city?.trim() || '';
+const getStopSearchLabel = (stop: RouteStop) => stop.place?.trim() || '';
 
 const fetchWikipediaImage = async (query: string) => {
   if (!query) {
