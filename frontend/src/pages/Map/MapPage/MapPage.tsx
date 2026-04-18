@@ -111,7 +111,7 @@ export function MapPage() {
             {activeRoute ?
               <>
                 <Group justify="space-between">
-                  <Button onClick={deselectRoute}>Back</Button>
+                  <Button onClick={deselectRoute}>Назад</Button>
                   <Button variant="subtle" color="red" onClick={openDeleteModal} loading={isDeletingRoute}>
                     <IconTrash size={16} />
                   </Button>

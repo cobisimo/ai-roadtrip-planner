@@ -1,7 +1,6 @@
 import {
   Anchor,
   Button,
-  Group,
   Paper,
   PasswordInput,
   Stack,
@@ -13,6 +12,7 @@ import { notifications } from '@mantine/notifications';
 import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import { useAuth } from '../../atoms/auth';
+import classes from './AuthenticationForm.module.css';
 
 type AuthMode = 'login' | 'register' | 'forgot' | 'reset';
 
@@ -25,24 +25,24 @@ type AuthFormValues = {
 
 const authCopy: Record<AuthMode, { title: string; description: string; submitLabel: string }> = {
   login: {
-    title: 'Prijava',
-    description: 'Unesite korisnicko ime i lozinku za nastavak.',
-    submitLabel: 'Prijavi se',
+    title: 'Пријава',
+    description: 'Унесите корисничко име и лозинку да бисте наставили.',
+    submitLabel: 'Пријави се',
   },
   register: {
-    title: 'Registracija',
-    description: 'Napravite novi nalog za planiranje putovanja.',
-    submitLabel: 'Registruj se',
+    title: 'Регистрација',
+    description: 'Направите нови налог за планирање путовања.',
+    submitLabel: 'Региструј се',
   },
   forgot: {
-    title: 'Zaboravljena lozinka',
-    description: 'Poslacemo zahtev za resetovanje lozinke za uneto korisnicko ime.',
-    submitLabel: 'Posalji zahtev',
+    title: 'Заборављена лозинка',
+    description: 'Послаћемо захтев за ресетовање лозинке за унето корисничко име.',
+    submitLabel: 'Пошаљи захтев',
   },
   reset: {
-    title: 'Reset lozinke',
-    description: 'Unesite reset token i postavite novu lozinku.',
-    submitLabel: 'Sacuvaj novu lozinku',
+    title: 'Ресет лозинке',
+    description: 'Унесите ресет токен и поставите нову лозинку.',
+    submitLabel: 'Сачувај нову лозинку',
   },
 };
 
@@ -51,7 +51,7 @@ const getErrorMessage = (error: unknown) => {
     return error.message;
   }
 
-  return 'Doslo je do greske pri obradi zahteva.';
+  return 'Дошло је до грешке при обради захтева.';
 };
 
 export function AuthenticationForm() {
@@ -66,13 +66,13 @@ export function AuthenticationForm() {
       token: '',
     },
     validate: {
-      username: (value) => (value.trim().length === 0 ? 'Korisnicko ime je obavezno.' : null),
+      username: (value) => (value.trim().length === 0 ? 'Корисничко име је обавезно.' : null),
       password: (value) => {
         if (mode === 'forgot') {
           return null;
         }
 
-        return value.length < 6 ? 'Lozinka mora da sadrzi najmanje 6 karaktera.' : null;
+        return value.length < 6 ? 'Лозинка мора да садржи најмање 6 карактера.' : null;
       },
       confirmPassword: (value, values) => {
         if (mode !== 'register' && mode !== 'reset') {
@@ -80,17 +80,17 @@ export function AuthenticationForm() {
         }
 
         if (value.length === 0) {
-          return 'Potvrdite lozinku.';
+          return 'Потврдите лозинку.';
         }
 
-        return value !== values.password ? 'Lozinke se ne poklapaju.' : null;
+        return value !== values.password ? 'Лозинке се не поклапају.' : null;
       },
       token: (value) => {
         if (mode !== 'reset') {
           return null;
         }
 
-        return value.trim().length === 0 ? 'Reset token je obavezan.' : null;
+        return value.trim().length === 0 ? 'Ресет токен је обавезан.' : null;
       },
     },
   });
@@ -115,8 +115,8 @@ export function AuthenticationForm() {
           password: values.password,
         });
         notifications.show({
-          title: 'Uspesna prijava',
-          message: 'Dobrodosli nazad.',
+          title: 'Успешна пријава',
+          message: 'Добро дошли назад.',
           color: 'green',
         });
         navigate('/map');
@@ -129,8 +129,8 @@ export function AuthenticationForm() {
           password: values.password,
         });
         notifications.show({
-          title: 'Nalog je kreiran',
-          message: 'Mozete da se prijavite novim kredencijalima.',
+          title: 'Налог је креиран',
+          message: 'Можете да се пријавите новим креденцијалима.',
           color: 'green',
         });
         switchMode('login');
@@ -140,8 +140,8 @@ export function AuthenticationForm() {
       if (mode === 'forgot') {
         await forgotPassword({ username });
         notifications.show({
-          title: 'Zahtev je poslat',
-          message: 'U development okruzenju reset token proverite u backend konzoli.',
+          title: 'Захтев је послат',
+          message: 'У развојном окружењу ресет токен проверите у бекенд конзоли.',
           color: 'blue',
         });
         switchMode('reset');
@@ -154,14 +154,14 @@ export function AuthenticationForm() {
         newPassword: values.password,
       });
       notifications.show({
-        title: 'Lozinka je promenjena',
-        message: 'Sada mozete da se prijavite novom lozinkom.',
+        title: 'Лозинка је промењена',
+        message: 'Сада можете да се пријавите новом лозинком.',
         color: 'green',
       });
       switchMode('login');
     } catch (error) {
       notifications.show({
-        title: 'Greska',
+        title: 'Грешка',
         message: getErrorMessage(error),
         color: 'red',
       });
@@ -174,7 +174,7 @@ export function AuthenticationForm() {
   const showResetToken = mode === 'reset';
 
   return (
-    <Paper radius="md" p="lg" withBorder>
+    <Paper radius="xl" p="lg" withBorder shadow="xl" className={classes.card}>
       <Text size="xl" fw={700}>
         {copy.title}
       </Text>
@@ -183,96 +183,100 @@ export function AuthenticationForm() {
       </Text>
 
       <form onSubmit={handleSubmit}>
-        <Stack>
+        <Stack gap="md">
           <TextInput
             required
-            label="Korisnicko ime"
-            placeholder="npr. test_putnik"
+            label="Корисничко име"
+            placeholder="нпр. test_putnik"
             value={form.values.username}
             onChange={(event) => form.setFieldValue('username', event.currentTarget.value)}
             error={form.errors.username}
             autoComplete="username"
             radius="md"
+            size="md"
           />
 
           {showResetToken && (
             <TextInput
               required
-              label="Reset token"
-              placeholder="Nalepite token iz backend konzole"
+              label="Ресет токен"
+              placeholder="Налепите токен из бекенд конзоле"
               value={form.values.token}
               onChange={(event) => form.setFieldValue('token', event.currentTarget.value)}
               error={form.errors.token}
               autoComplete="one-time-code"
               radius="md"
+              size="md"
             />
           )}
 
           {showPasswordFields && (
             <PasswordInput
               required
-              label={mode === 'reset' ? 'Nova lozinka' : 'Lozinka'}
-              placeholder={mode === 'reset' ? 'Unesite novu lozinku' : 'Unesite lozinku'}
+              label={mode === 'reset' ? 'Нова лозинка' : 'Лозинка'}
+              placeholder={mode === 'reset' ? 'Унесите нову лозинку' : 'Унесите лозинку'}
               value={form.values.password}
               onChange={(event) => form.setFieldValue('password', event.currentTarget.value)}
               error={form.errors.password}
               autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
               radius="md"
+              size="md"
             />
           )}
 
           {showConfirmPassword && (
             <PasswordInput
               required
-              label="Potvrdite lozinku"
-              placeholder="Ponovite lozinku"
+              label="Потврдите лозинку"
+              placeholder="Поновите лозинку"
               value={form.values.confirmPassword}
               onChange={(event) => form.setFieldValue('confirmPassword', event.currentTarget.value)}
               error={form.errors.confirmPassword}
               autoComplete="new-password"
               radius="md"
+              size="md"
             />
           )}
 
           {(mode === 'forgot' || mode === 'reset') && (
-            <Text c="dimmed" size="sm">
-              U development okruzenju reset token se ispisuje u backend konzoli.
+            <Text c="dimmed" size="sm" className={classes.helperText}>
+              У развојном окружењу ресет токен се исписује у бекенд конзоли.
             </Text>
           )}
         </Stack>
 
-        <Group justify="space-between" mt="xl" align="flex-start">
-          <Stack gap={6}>
+        <div className={classes.footer}>
+          <Stack gap={6} className={classes.linkGroup}>
             {mode !== 'login' && (
               <Anchor component="button" type="button" onClick={() => switchMode('login')} size="xs">
-                Povratak na prijavu
+                Повратак на пријаву
               </Anchor>
             )}
             {mode === 'login' && (
               <>
                 <Anchor component="button" type="button" onClick={() => switchMode('register')} size="xs">
-                  Nemate nalog? Registrujte se
+                  Немате налог? Региструјте се
                 </Anchor>
                 <Anchor component="button" type="button" onClick={() => switchMode('forgot')} size="xs">
-                  Zaboravili ste lozinku?
+                  Заборавили сте лозинку?
                 </Anchor>
               </>
             )}
             {mode === 'forgot' && (
               <Anchor component="button" type="button" onClick={() => switchMode('reset')} size="xs">
-                Vec imate token? Resetujte lozinku
+                Већ имате токен? Ресетујте лозинку
               </Anchor>
             )}
             {mode === 'reset' && (
               <Anchor component="button" type="button" onClick={() => switchMode('forgot')} size="xs">
-                Zatrazite novi reset token
+                Затражите нови ресет токен
               </Anchor>
             )}
           </Stack>
-          <Button type="submit" loading={isLoading} radius="xl">
+          <Button type="submit" loading={isLoading} radius="xl" size="md" className={classes.submitButton}>
             {copy.submitLabel}
           </Button>
-        </Group>
+        </div>
       </form>
     </Paper>
   );
