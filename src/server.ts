@@ -3,6 +3,7 @@ import cors from 'cors';
 import OpenAI from 'openai';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
+import { randomBytes } from 'node:crypto';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import Database from 'better-sqlite3';
 import * as schema from './db/schema.js';
@@ -38,6 +39,85 @@ const client = new OpenAI({
   apiKey: process.env.GEMINI_API_KEY,
 });
 
+type RouteStop = {
+  place: string;
+  city?: string;
+  lat: number;
+  lng: number;
+  description: string;
+  reason: string;
+  image?: string;
+};
+
+type RouteData = {
+  title: string;
+  stops: RouteStop[];
+};
+
+type WikipediaSearchResult = {
+  title: string;
+  matched_title?: string | null;
+  description?: string | null;
+  thumbnail?: {
+    url?: string;
+  } | null;
+};
+
+const WIKIMEDIA_USER_AGENT =
+  process.env.WIKIMEDIA_USER_AGENT ??
+  'AI Roadtrip Planner/1.0 (route image enrichment; local development)';
+
+const WIKIPEDIA_HEADERS = {
+  'User-Agent': WIKIMEDIA_USER_AGENT,
+  'Api-User-Agent': WIKIMEDIA_USER_AGENT,
+  Accept: 'application/json',
+};
+
+const normalizeThumbnailUrl = (url?: string) => {
+  if (!url) return undefined;
+  return url.replace('60px', '500px').replace('//', 'https://');
+};
+
+const getStopSearchLabel = (stop: RouteStop) => stop.place?.trim() || stop.city?.trim() || '';
+
+const fetchWikipediaImage = async (query: string) => {
+  if (!query) {
+    return undefined;
+  }
+
+  const response = await axios.get<{ pages?: WikipediaSearchResult[] }>('https://sr.wikipedia.org/w/rest.php/v1/search/page', {
+    params: {
+      q: query,
+      limit: 1,
+    },
+    headers: WIKIPEDIA_HEADERS,
+    timeout: 5000,
+  });
+
+  const pages = response.data.pages ?? [];
+  return normalizeThumbnailUrl(pages[0]?.thumbnail?.url);
+};
+
+const enrichStopsWithImages = async (stops: RouteStop[]) => {
+  return Promise.all(
+    stops.map(async (stop) => {
+      if (stop.image) {
+        return stop;
+      }
+
+      try {
+        const image = await fetchWikipediaImage(getStopSearchLabel(stop));
+        if (image) {
+          return { ...stop, image };
+        }
+      } catch (error) {
+        console.error(`Error fetching image for stop "${getStopSearchLabel(stop)}":`, error);
+      }
+
+      return stop;
+    }),
+  );
+};
 
 // Middleware за аутентификацију
 const auth = (req: any, res: any, next: any) => {
@@ -102,7 +182,7 @@ app.post('/api/forgot-password', async (req, res) => {
       return res.status(200).send('If a user with that username exists, a password reset link has been sent.');
     }
 
-    const resetToken = crypto.randomBytes(32).toString('hex');
+    const resetToken = randomBytes(32).toString('hex');
     const resetTokenExpiry = Date.now() + 3600000; // 1 hour expiry
 
     sqlite.prepare('UPDATE users SET resetToken = ?, resetTokenExpiry = ? WHERE id = ?').run(resetToken, resetTokenExpiry, user.id);
@@ -148,7 +228,7 @@ app.post('/api/generate', auth, async (req: any, res) => {
   try {
     const completion = await client.chat.completions.create({
       messages: [
-        { role: "system", content: "Ти си планер путовања. Опис и разлог посете објаснити у најмање 3 реченице и да се не понављају. Врати ИСКЉУЧИВО JSON: {\"title\": \"Наслов\", \"stops\": [{\"city\": \"Град\", \"lat\": 44, \"lng\": 20, \"description\": \"Опис\", \"reason\": \"Разлог\"}]}" },
+        { role: "system", content: "Ти си планер путовања. Опис и разлог посете објаснити у најмање 3 реченице и да се не понављају. Врати ИСКЉУЧИВО JSON: {\"title\": \"Наслов\", \"stops\": [{\"place\": \"Место\", \"lat\": 44, \"lng\": 20, \"description\": \"Опис\", \"reason\": \"Разлог\"}]}" },
         { role: "user", content: req.body.prompt }
       ],
       // model: "mistral-small-latest",
@@ -156,16 +236,26 @@ app.post('/api/generate', auth, async (req: any, res) => {
       response_format: { type: "json_object" },
     });
 
-    const routeData = JSON.parse(completion.choices[0].message.content || '{}');
-    const waypoints = routeData.stops.map(stop => `${stop.lng},${stop.lat}`);
+    let routeData: RouteData;
+
+    try {
+      routeData = JSON.parse(completion.choices[0].message.content || '{}') as RouteData;
+    } catch (error) {
+      console.error('Error parsing route data:', error);
+      console.log(completion);
+      return res.status(500).send('Error parsing route data');
+    }
+
+    const stops = await enrichStopsWithImages(routeData.stops ?? []);
+    const waypoints = stops.map(stop => `${stop.lng},${stop.lat}`);
     const routeCoordinates = await fetchRoute(waypoints);
 
     const result = await db.insert(schema.routes).values({
       userId: req.user.userId,
       title: routeData.title,
       destination: req.body.prompt,
-      data: JSON.stringify(routeData.stops),
-      path: JSON.stringify(routeCoordinates.map(coord => [coord[1], coord[0]]))
+      data: JSON.stringify(stops),
+      path: JSON.stringify((routeCoordinates ?? []).map(coord => [coord[1], coord[0]]))
     }).returning();
     res.json(result[0]);
   } catch (e) { res.status(500).send(e); }

@@ -4,7 +4,8 @@ import {
   ActionIcon,
   Affix,
   Burger,
-  Accordion
+  Accordion,
+  Image,
 } from '@mantine/core';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
@@ -119,9 +120,23 @@ export function MapPage() {
                 <Accordion>
                   {
                     activeRoute?.map(item => (
-                      <Accordion.Item key={item.city} value={item.city}>
-                        <Accordion.Control>{item.city}</Accordion.Control>
-                        <Accordion.Panel>{item.description}</Accordion.Panel>
+                      <Accordion.Item key={item.place ?? item.city} value={item.place ?? item.city}>
+                        <Accordion.Control>{item.place ?? item.city}</Accordion.Control>
+                        <Accordion.Panel>
+                          <Stack gap="sm">
+                            {item.image && (
+                              <Image
+                                src={item.image}
+                                alt={item.place ?? item.city}
+                                radius="md"
+                                mah={180}
+                                fit="cover"
+                              />
+                            )}
+                            <Text size="sm" fw={600}>{item.reason}</Text>
+                            <Text size="sm" c="dimmed">{item.description}</Text>
+                          </Stack>
+                        </Accordion.Panel>
                       </Accordion.Item>
                     ))}
                 </Accordion>
@@ -154,9 +169,9 @@ export function MapPage() {
               <Marker key={index} position={[stop.lat, stop.lng]} icon={customIcon}>
                 <Popup>
                   <div>
-                    <Text fw={600}>{stop.city}</Text>
+                    <Text fw={600}>{stop.place ?? stop.city}</Text>
                     <Text size="sm">{stop.reason}</Text>
-                    {stop.image && <img src={stop.image} alt={stop.city} style={{ width: '100%', marginTop: 8 }} />}
+                    {stop.image && <img src={stop.image} alt={stop.place ?? stop.city} style={{ width: '100%', marginTop: 8 }} />}
                   </div>
                 </Popup>
               </Marker>

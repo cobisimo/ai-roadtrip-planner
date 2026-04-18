@@ -26,7 +26,7 @@ export function PromptPage() {
 
   return (
     <Container size={640} style={{ display: 'flex', alignItems: 'center', height: '100vh' }}>
-      <Affix position={{ top: 20, right: 20 }} zIndex={1001}>
+      <Affix position={{ top: 20, right: 20 }}>
         <Burger opened={true} onClick={() => navigate('/map')} style={{
           '--ai-size': 'calc(3.75rem * var(--mantine-scale))',
           border: '1px solid var(--mantine-color-default-border)',
