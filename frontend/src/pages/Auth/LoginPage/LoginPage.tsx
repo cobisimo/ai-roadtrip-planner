@@ -2,7 +2,9 @@ import { Container, Stack, Text, ThemeIcon, Title } from '@mantine/core';
 import { IconDeviceMobile, IconMapPin, IconRoute } from '@tabler/icons-react';
 import { AuthenticationForm } from '../../../components/AuthenticationForm/AuthenticationForm';
 import logoImg from '../../../assets/logo.png';
+import logoImgDark from '../../../assets/logo-dark.png';
 import classes from './LoginPage.module.css';
+import { useColorScheme } from '@mantine/hooks';
 
 const features = [
   {
@@ -23,6 +25,8 @@ const features = [
 ];
 
 export function LoginPage() {
+  const colorScheme = useColorScheme();
+
   return (
     <div className={classes.page}>
       <Container size="lg" className={classes.container}>
@@ -59,7 +63,7 @@ export function LoginPage() {
           <section className={classes.formPanel}>
             <Stack gap="lg">
               <div className={classes.brandBlock}>
-                <img src={logoImg} alt="AI Планер Путовања" className={classes.logo} />
+                <img src={colorScheme === 'dark' ? logoImgDark : logoImg} alt="AI Планер Путовања" className={classes.logo} />
                 <Text className={classes.brandText}>
                   Пријавите се или направите налог да бисте сачували своје руте и наставили планирање путовања.
                 </Text>

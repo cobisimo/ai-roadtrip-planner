@@ -20,6 +20,7 @@ import { MapZoomToRoute } from '../../../components/MapZoomToRoute';
 import { useColorScheme, useDisclosure } from '@mantine/hooks';
 import flagIconSvg from '../../../assets/flag.svg?raw';
 import logoImg from '../../../assets/logo.png';
+import logoImgDark from '../../../assets/logo-dark.png';
 import { useEffect, useState } from 'react';
 
 export function MapPage() {
@@ -111,7 +112,7 @@ export function MapPage() {
       </Affix>
       <AppShell.Navbar p="md" zIndex={1001}>
         <Group mb="md">
-          <img src={logoImg} alt="logo" style={{ width: 266 }} />
+          <img src={colorScheme === 'dark' ? logoImgDark : logoImg} alt="logo" style={{ width: 266 }} />
         </Group>
         <ScrollArea flex={1}>
           <Stack gap="xs">
