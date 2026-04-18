@@ -1,9 +1,10 @@
 import { useEffect } from 'react';
 import { useMap } from 'react-leaflet';
 import L from 'leaflet';
+import type { RouteCoordinate } from '../atoms/routes';
 
 interface MapZoomToRouteProps {
-  routeCoordinates: any[] | null;
+  routeCoordinates: RouteCoordinate[] | null;
 }
 
 export function MapZoomToRoute({ routeCoordinates }: MapZoomToRouteProps) {

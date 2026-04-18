@@ -126,7 +126,7 @@ export function MapPage() {
                     ))}
                 </Accordion>
               </>
-              : routes?.map(r => (
+              : routes?.map((r) => (
                 <Card key={r.id} withBorder p="sm" radius="md" style={{ cursor: 'pointer' }}>
                   <div onClick={() => selectRoute(r.id)}>
                     <Text size="sm" fw={600}>{r.title}</Text>

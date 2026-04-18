@@ -1,11 +1,33 @@
 import { atom, useAtom } from 'jotai';
 
-export const routesAtom = atom<any[]>([]);
-export const activeRouteAtom = atom<any[] | null>(null);
-export const routeCoordinatesAtom = atom<any[] | null>(null);
-
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { tokenAtom } from '../atoms/auth';
+
+export type RouteStop = {
+  city: string;
+  lat: number;
+  lng: number;
+  description: string;
+  reason: string;
+  image?: string;
+};
+
+export type RouteCoordinate = [number, number];
+
+export type SavedRoute = {
+  id: number;
+  title: string;
+  destination: string;
+  data: string;
+  path: string;
+};
+
+export const routesAtom = atom<SavedRoute[]>([]);
+export const activeRouteAtom = atom<RouteStop[] | null>(null);
+export const routeCoordinatesAtom = atom<RouteCoordinate[] | null>(null);
+
+const parseStops = (value: string) => JSON.parse(value) as RouteStop[];
+const parsePath = (value: string) => JSON.parse(value) as RouteCoordinate[];
 
 export function useRoutes() {
   const [token] = useAtom(tokenAtom);
@@ -14,7 +36,7 @@ export function useRoutes() {
   const [, setRouteCoordinates] = useAtom(routeCoordinatesAtom);
   const queryClient = useQueryClient();
 
-  const fetchWithAuth = async (url: string, options: RequestInit = {}) => {
+  const fetchWithAuth = async <T>(url: string, options: RequestInit = {}) => {
     const response = await fetch(`http://localhost:3000/api${url}`, {
       ...options,
       headers: {
@@ -28,13 +50,13 @@ export function useRoutes() {
       throw new Error(`Request failed with status ${response.status}`);
     }
 
-    return response.json();
+    return response.json() as Promise<T>;
   };
 
   const { data: routes, isLoading: isLoadingRoutes } = useQuery({
     queryKey: ['routes'],
     queryFn: async () => {
-      const data = await fetchWithAuth('/routes');
+      const data = await fetchWithAuth<SavedRoute[]>('/routes');
       setRoutes(data);
       return data;
     },
@@ -43,15 +65,15 @@ export function useRoutes() {
 
   const createRouteMutation = useMutation({
     mutationFn: async (prompt: string) => {
-      const data = await fetchWithAuth('/generate', {
+      const data = await fetchWithAuth<SavedRoute>('/generate', {
         method: 'POST',
         body: JSON.stringify({ prompt }),
       });
       return data;
     },
     onSuccess: (data) => {
-      const stops = JSON.parse(data.data);
-      const path = JSON.parse(data.path);
+      const stops = parseStops(data.data);
+      const path = parsePath(data.path);
       setActiveRoute(stops);
       setRouteCoordinates(path);
       queryClient.invalidateQueries({ queryKey: ['routes'] });
@@ -71,12 +93,12 @@ export function useRoutes() {
 
   const getRouteDetailsMutation = useMutation({
     mutationFn: async (routeId: number) => {
-      const data = await fetchWithAuth(`/routes/${routeId}`);
+      const data = await fetchWithAuth<SavedRoute>(`/routes/${routeId}`);
       return data;
     },
     onSuccess: (data) => {
-      const stops = JSON.parse(data.data);
-      const path = JSON.parse(data.path);
+      const stops = parseStops(data.data);
+      const path = parsePath(data.path);
       setActiveRoute(stops);
       setRouteCoordinates(path);
     },

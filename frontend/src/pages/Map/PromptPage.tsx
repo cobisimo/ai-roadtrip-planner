@@ -1,4 +1,4 @@
-import { ActionIcon, Affix, Burger, Container, LoadingOverlay } from '@mantine/core';
+import { Affix, Burger, Container, LoadingOverlay } from '@mantine/core';
 import { SimpleInput } from '../../components/SimpleInput/SimpleInput';
 import { useNavigate } from 'react-router-dom';
 import { notifications } from '@mantine/notifications';
