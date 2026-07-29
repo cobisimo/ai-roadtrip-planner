@@ -22,7 +22,11 @@ type ResetPasswordPayload = {
   newPassword: string;
 };
 
-const AUTH_API_URL = 'http://localhost:3000/api';
+export const AUTH_API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api';
+
+const startGoogleAuth = () => {
+  window.location.assign(`${AUTH_API_URL}/auth/google`);
+};
 
 const requestAuth = async <T>(path: string, body: unknown) => {
   const response = await fetch(`${AUTH_API_URL}${path}`, {
@@ -95,6 +99,7 @@ export function useAuth() {
     register: registerMutation.mutateAsync,
     forgotPassword: forgotPasswordMutation.mutateAsync,
     resetPassword: resetPasswordMutation.mutateAsync,
+    startGoogleAuth,
     isLoading:
       loginMutation.isPending ||
       registerMutation.isPending ||

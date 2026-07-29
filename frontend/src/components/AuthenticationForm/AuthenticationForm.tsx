@@ -1,6 +1,7 @@
 import {
   Anchor,
   Button,
+  Divider,
   Paper,
   PasswordInput,
   Stack,
@@ -12,6 +13,7 @@ import { notifications } from '@mantine/notifications';
 import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import { useAuth } from '../../atoms/auth';
+import { GoogleButton } from './GoogleButton';
 import classes from './AuthenticationForm.module.css';
 
 type AuthMode = 'login' | 'register' | 'forgot' | 'reset';
@@ -56,7 +58,7 @@ const getErrorMessage = (error: unknown) => {
 
 export function AuthenticationForm() {
   const navigate = useNavigate();
-  const { login, register, forgotPassword, resetPassword, isLoading } = useAuth();
+  const { login, register, forgotPassword, resetPassword, startGoogleAuth, isLoading } = useAuth();
   const [mode, setMode] = useState<AuthMode>('login');
   const form = useForm({
     initialValues: {
@@ -277,6 +279,22 @@ export function AuthenticationForm() {
             {copy.submitLabel}
           </Button>
         </div>
+
+        {(mode === 'login' || mode === 'register') && (
+          <Stack gap="sm" mt="lg">
+            <Divider label="или" labelPosition="center" />
+            <GoogleButton
+              type="button"
+              fullWidth
+              radius="xl"
+              size="md"
+              onClick={startGoogleAuth}
+              disabled={isLoading}
+            >
+              Наставите са Google налогом
+            </GoogleButton>
+          </Stack>
+        )}
       </form>
     </Paper>
   );

@@ -51,6 +51,26 @@ The application requires a backend API for authentication and route management. 
 
 Update the `fetch` URLs to point to your backend API.
 
+### Google authentication
+
+Create a Google OAuth 2.0 Web application in Google Cloud Console and add this authorized redirect URI:
+
+```text
+http://localhost:3000/api/auth/google/callback
+```
+
+Add these variables to the root `.env` file:
+
+```text
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+GOOGLE_REDIRECT_URI=http://localhost:3000/api/auth/google/callback
+FRONTEND_URL=http://localhost:5173
+JWT_SECRET=replace-with-a-long-random-secret
+```
+
+Google authentication supports both sign-in and sign-up. A Google user is created automatically on the first successful authentication and linked to an existing local account when the email matches.
+
 ## Usage
 
 1. Register or log in to the application.

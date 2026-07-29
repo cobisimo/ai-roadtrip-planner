@@ -5,6 +5,11 @@ import logoImg from '../../../assets/logo.png';
 import logoImgDark from '../../../assets/logo-dark.png';
 import classes from './LoginPage.module.css';
 import { useColorScheme } from '@mantine/hooks';
+import { useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useAtom } from 'jotai';
+import { notifications } from '@mantine/notifications';
+import { tokenAtom } from '../../../atoms/auth';
 
 const features = [
   {
@@ -26,6 +31,30 @@ const features = [
 
 export function LoginPage() {
   const colorScheme = useColorScheme();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [, setToken] = useAtom(tokenAtom);
+
+  useEffect(() => {
+    const token = searchParams.get('token');
+    const error = searchParams.get('error');
+
+    if (token) {
+      setToken(token);
+      setSearchParams({}, { replace: true });
+      navigate('/map', { replace: true });
+      return;
+    }
+
+    if (error) {
+      notifications.show({
+        title: 'Google пријава није успела',
+        message: error,
+        color: 'red',
+      });
+      setSearchParams({}, { replace: true });
+    }
+  }, [navigate, searchParams, setSearchParams, setToken]);
 
   return (
     <div className={classes.page}>

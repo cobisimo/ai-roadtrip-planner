@@ -9,6 +9,7 @@ import Database from 'better-sqlite3';
 import * as schema from './db/schema.js';
 import { eq, desc } from 'drizzle-orm';
 import axios from 'axios';
+import { OAuth2Client } from 'google-auth-library';
 
 process.on('uncaughtException', (err) => {
   console.error('Критична грешка приликом покретања:', err);
@@ -24,7 +25,20 @@ console.log("Покрећем сервер...");
 const app = express();
 const sqlite = new Database('roadtrip.db');
 const db = drizzle(sqlite, { schema });
-const JWT_SECRET = 'm3_chip_power_123';
+const JWT_SECRET = process.env.JWT_SECRET || 'm3_chip_power_123';
+
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3000/api/auth/google/callback';
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+const GOOGLE_STATE_COOKIE = 'google_oauth_state';
+const googleOAuthClient = GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET
+  ? new OAuth2Client({
+      clientId: GOOGLE_CLIENT_ID,
+      clientSecret: GOOGLE_CLIENT_SECRET,
+      redirectUri: GOOGLE_REDIRECT_URI,
+    })
+  : null;
 
 app.use(cors());
 app.use(express.json());
@@ -128,7 +142,101 @@ const auth = (req: any, res: any, next: any) => {
   } catch { res.status(401).send('Invalid token'); }
 };
 
-const fetchRoute = async (waypoints: string[]) => {
+const getCookies = (header?: string) => Object.fromEntries(
+  (header ?? '').split(';').flatMap((part) => {
+    const separator = part.indexOf('=');
+    if (separator < 0) return [];
+    return [[part.slice(0, separator).trim(), decodeURIComponent(part.slice(separator + 1).trim())]];
+  }),
+);
+
+const redirectToLogin = (res: express.Response, params: Record<string, string>) => {
+  const query = new URLSearchParams(params);
+  res.redirect(`${FRONTEND_URL}/login?${query.toString()}`);
+};
+
+app.get('/api/auth/google', (req, res) => {
+  if (!googleOAuthClient) {
+    return redirectToLogin(res, { error: 'Google authentication is not configured on the server.' });
+  }
+
+  const state = randomBytes(24).toString('hex');
+  res.setHeader(
+    'Set-Cookie',
+    `${GOOGLE_STATE_COOKIE}=${encodeURIComponent(state)}; HttpOnly; Path=/api/auth/google; SameSite=Lax; Max-Age=600`,
+  );
+
+  const googleUrl = googleOAuthClient.generateAuthUrl({
+    access_type: 'online',
+    scope: ['openid', 'email', 'profile'],
+    state,
+    prompt: 'select_account',
+  });
+
+  res.redirect(googleUrl);
+});
+
+app.get('/api/auth/google/callback', async (req, res) => {
+  const { code, state, error } = req.query;
+  const storedState = getCookies(req.headers.cookie)[GOOGLE_STATE_COOKIE];
+
+  if (error) {
+    return redirectToLogin(res, { error: String(error) });
+  }
+
+  if (typeof code !== 'string' || typeof state !== 'string' || !storedState || state !== storedState) {
+    return redirectToLogin(res, { error: 'Invalid Google authentication state.' });
+  }
+
+  if (!googleOAuthClient || !GOOGLE_CLIENT_ID) {
+    return redirectToLogin(res, { error: 'Google authentication is not configured on the server.' });
+  }
+
+  try {
+    const { tokens } = await googleOAuthClient.getToken(code);
+    if (!tokens.id_token) {
+      return redirectToLogin(res, { error: 'Google did not return an identity token.' });
+    }
+
+    const ticket = await googleOAuthClient.verifyIdToken({
+      idToken: tokens.id_token,
+      audience: GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+
+    if (!payload?.sub || !payload.email || payload.email_verified === false) {
+      return redirectToLogin(res, { error: 'Google did not provide a verified email address.' });
+    }
+
+    let user = sqlite.prepare('SELECT * FROM users WHERE google_id = ?').get(payload.sub) as { id: number; username: string } | undefined;
+
+    if (!user) {
+      user = sqlite.prepare('SELECT * FROM users WHERE username = ?').get(payload.email) as { id: number; username: string } | undefined;
+      if (user) {
+        sqlite.prepare('UPDATE users SET google_id = ? WHERE id = ?').run(payload.sub, user.id);
+      }
+    }
+
+    if (!user) {
+      const password = await bcrypt.hash(randomBytes(32).toString('hex'), 10);
+      const result = sqlite.prepare('INSERT INTO users (username, password, google_id) VALUES (?, ?, ?)').run(
+        payload.email,
+        password,
+        payload.sub,
+      );
+      user = { id: Number(result.lastInsertRowid), username: payload.email };
+    }
+
+    const token = jwt.sign({ userId: user.id, username: user.username }, JWT_SECRET, { expiresIn: '7d' });
+    res.setHeader('Set-Cookie', `${GOOGLE_STATE_COOKIE}=; HttpOnly; Path=/api/auth/google; SameSite=Lax; Max-Age=0`);
+    return redirectToLogin(res, { token });
+  } catch (oauthError) {
+    console.error('Google authentication failed:', oauthError);
+    return redirectToLogin(res, { error: 'Google authentication failed. Please try again.' });
+  }
+});
+
+const fetchRoute = async (waypoints: string[]): Promise<[number, number][] | null> => {
   try {
     const response = await axios.get(`https://router.project-osrm.org/route/v1/driving/${waypoints.join(';')}?overview=full&geometries=geojson`);
     return response.data.routes[0].geometry.coordinates;

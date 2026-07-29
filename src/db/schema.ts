@@ -4,6 +4,7 @@ export const users = sqliteTable('users', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   username: text('username').notNull().unique(),
   password: text('password').notNull(),
+  googleId: text('google_id').unique(),
 });
 
 export const routes = sqliteTable('routes', {
