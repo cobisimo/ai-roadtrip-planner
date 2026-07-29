@@ -14,10 +14,10 @@ function PasswordRequirement({ meets, label }: { meets: boolean; label: string }
 }
 
 const requirements = [
-  { re: /[0-9]/, label: 'Includes number' },
-  { re: /[a-z]/, label: 'Includes lowercase letter' },
-  { re: /[A-Z]/, label: 'Includes uppercase letter' },
-  { re: /[$&+,:;=?@#|'<>.^*()%!-]/, label: 'Includes special symbol' },
+  { re: /[0-9]/, label: 'Садржи број' },
+  { re: /[a-z]/, label: 'Садржи мало слово' },
+  { re: /[A-Z]/, label: 'Садржи велико слово' },
+  { re: /[$&+,:;=?@#|'<>.^*()%!-]/, label: 'Садржи специјални знак' },
 ];
 
 function getStrength(password: string) {
@@ -49,7 +49,7 @@ export function PasswordStrength() {
         color={strength > 80 ? 'teal' : strength > 50 ? 'yellow' : 'red'}
         key={index}
         size={4}
-        aria-label={`Password strength segment ${index + 1}`}
+        aria-label={`Део јачине лозинке ${index + 1}`}
       />
     ));
 
@@ -58,8 +58,8 @@ export function PasswordStrength() {
       <PasswordInput
         value={value}
         onChange={setValue}
-        placeholder="Your password"
-        label="Password"
+        placeholder="Ваша лозинка"
+        label="Лозинка"
         required
       />
 
@@ -67,7 +67,7 @@ export function PasswordStrength() {
         {bars}
       </Group>
 
-      <PasswordRequirement label="Has at least 6 characters" meets={value.length > 5} />
+      <PasswordRequirement label="Има најмање 6 знакова" meets={value.length > 5} />
       {checks}
     </div>
   );

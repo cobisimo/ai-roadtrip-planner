@@ -1,6 +1,6 @@
 
 import { atomWithStorage } from 'jotai/utils'
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAtom } from 'jotai';
 
 export const tokenAtom = atomWithStorage<string | null>('token', null);
@@ -23,6 +23,18 @@ type ResetPasswordPayload = {
 };
 
 export const AUTH_API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api';
+
+export type CurrentUser = {
+  userId: number;
+  username: string;
+  role: 'user' | 'admin';
+  plan: 'free' | 'paid_10' | 'paid_50' | 'paid_100' | null;
+  dailyLimit: number;
+  usageDate: string | null;
+  usageCount: number;
+};
+
+export type UserPlan = Exclude<CurrentUser['plan'], null>;
 
 const startGoogleAuth = () => {
   window.location.assign(`${AUTH_API_URL}/auth/google`);
@@ -48,7 +60,7 @@ const requestAuth = async <T>(path: string, body: unknown) => {
         ? payload
         : payload && typeof payload === 'object' && 'message' in payload
           ? String(payload.message)
-          : 'Authentication request failed.',
+          : 'Захтев за аутентификацију није успео.',
     );
   }
 
@@ -71,6 +83,54 @@ const forgotPassword = async (payload: ForgotPasswordPayload) => {
 const resetPassword = async (payload: ResetPasswordPayload) => {
   return requestAuth<string>('/reset-password', payload);
 };
+
+const fetchCurrentUser = async (token: string) => {
+  const response = await fetch(`${AUTH_API_URL}/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error('Тренутног корисника није могуће учитати.');
+  return response.json() as Promise<CurrentUser>;
+};
+
+export function useCurrentUser() {
+  const [token] = useAtom(tokenAtom);
+
+  return useQuery({
+    queryKey: ['current-user', token],
+    queryFn: () => fetchCurrentUser(token as string),
+    enabled: Boolean(token),
+  });
+}
+
+export function useUpgradePlan() {
+  const [token] = useAtom(tokenAtom);
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: async (plan: UserPlan) => {
+      const response = await fetch(`${AUTH_API_URL}/me/plan`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ plan }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(payload?.error || 'Активирање плана није успело.');
+      return payload as CurrentUser;
+    },
+    onSuccess: (user) => {
+      void queryClient.invalidateQueries({ queryKey: ['current-user', token] });
+      queryClient.setQueryData(['current-user', token], user);
+    },
+  });
+
+  return {
+    upgradePlan: mutation.mutateAsync,
+    isUpgrading: mutation.isPending,
+  };
+}
 
 export function useAuth() {
   const [, setToken] = useAtom(tokenAtom);

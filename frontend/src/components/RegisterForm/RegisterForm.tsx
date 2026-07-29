@@ -12,14 +12,14 @@ export function RegisterForm() {
   return (
     <Container size={420} my={40}>
       <Title ta="center" className={classes.title}>
-        Register
+        Регистрација
       </Title>
 
       <Paper withBorder shadow="sm" p={22} mt={30} radius="md">
-        <TextInput label="Email" placeholder="you@mantine.dev" required radius="md" />
+        <TextInput label="Имејл" placeholder="ви@пример.срб" required radius="md" />
         <PasswordStrength />
         <Button fullWidth mt="xl" radius="md">
-          Register
+          Региструј се
         </Button>
       </Paper>
     </Container>

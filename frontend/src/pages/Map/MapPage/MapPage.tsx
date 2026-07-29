@@ -6,6 +6,8 @@ import {
   Burger,
   Accordion,
   Image,
+  Modal,
+  NativeSelect,
 } from '@mantine/core';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
@@ -14,7 +16,7 @@ import L from 'leaflet';
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
 import { useNavigate } from 'react-router-dom';
 import { useAtom } from 'jotai';
-import { tokenAtom } from '../../../atoms/auth';
+import { type UserPlan, tokenAtom, useCurrentUser, useUpgradePlan } from '../../../atoms/auth';
 import { activeRouteAtom, routeCoordinatesAtom, useRoutes } from '../../../atoms/routes';
 import { MapZoomToRoute } from '../../../components/MapZoomToRoute';
 import { useColorScheme, useDisclosure } from '@mantine/hooks';
@@ -22,6 +24,13 @@ import flagIconSvg from '../../../assets/flag.svg?raw';
 import logoImg from '../../../assets/logo.png';
 import logoImgDark from '../../../assets/logo-dark.png';
 import { useEffect, useState } from 'react';
+
+const planOptions: Array<{ value: UserPlan; label: string }> = [
+  { value: 'free', label: 'Бесплатни · 3 дневно' },
+  { value: 'paid_10', label: 'Плаћени · 5 $ месечно · 10 дневно' },
+  { value: 'paid_50', label: 'Плаћени · 10 $ месечно · 50 дневно' },
+  { value: 'paid_100', label: 'Плаћени · 25 $ месечно · 100 дневно' },
+];
 
 export function MapPage() {
   const [, setToken] = useAtom(tokenAtom);
@@ -33,16 +42,54 @@ export function MapPage() {
   const [opened, { toggle, close }] = useDisclosure();
   const {
     routes,
+    isLoadingRoutes,
     deleteRoute,
     isDeletingRoute,
     getRouteDetails,
   } = useRoutes();
 
   const navigate = useNavigate();
+  const { data: currentUser } = useCurrentUser();
+  const { upgradePlan, isUpgrading } = useUpgradePlan();
+  const [planModalOpened, setPlanModalOpened] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState<UserPlan | null>(null);
+  const today = new Date().toISOString().slice(0, 10);
+  const usedToday = currentUser?.usageDate === today ? currentUser.usageCount : 0;
+  const remainingRequests = currentUser?.role === 'admin' ? null : Math.max(0, (currentUser?.dailyLimit ?? 0) - usedToday);
+  const planLabel = currentUser?.plan === 'free'
+    ? 'Бесплатни'
+    : currentUser?.plan === 'paid_10'
+      ? 'Плаћени 5 $'
+      : currentUser?.plan === 'paid_50'
+        ? 'Плаћени 10 $'
+        : currentUser?.plan === 'paid_100'
+          ? 'Плаћени 25 $'
+          : null;
+
+  const handlePlanChange = async () => {
+    if (!selectedPlan || selectedPlan === currentUser?.plan) {
+      setPlanModalOpened(false);
+      return;
+    }
+
+    try {
+      await upgradePlan(selectedPlan);
+      setPlanModalOpened(false);
+      notifications.show({ title: 'План је ажуриран', message: 'Нови план и дневни лимит су активни.', color: 'green' });
+    } catch (error) {
+      notifications.show({ title: 'Промена плана није успела', message: error instanceof Error ? error.message : 'Покушајте поново.', color: 'red' });
+    }
+  };
 
   useEffect(() => {
     setColorScheme(preferredColorScheme);
   }, [preferredColorScheme]);
+
+  useEffect(() => {
+    if (!isLoadingRoutes && routes && routes.length === 0 && !activeRoute) {
+      navigate('/prompt', { replace: true });
+    }
+  }, [activeRoute, isLoadingRoutes, navigate, routes]);
 
   // Create a custom icon using the SVG string
   const customIcon = L.icon({
@@ -108,12 +155,32 @@ export function MapPage() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-        }} hiddenFrom="sm" size="md" aria-label="Toggle navigation" />
+        }} hiddenFrom="sm" size="md" aria-label="Пребаци навигацију" />
       </Affix>
       <AppShell.Navbar p="md" zIndex={1001}>
         <Group mb="md" justify="center">
-          <img src={preferredColorScheme === 'dark' ? logoImgDark : logoImg} alt="logo" style={{ width: 266 }} />
+          <img src={preferredColorScheme === 'dark' ? logoImgDark : logoImg} alt="Логотип" style={{ width: 266 }} />
         </Group>
+        {currentUser && (
+          <Button
+            type="button"
+            variant="subtle"
+            color="gray"
+            fullWidth
+            size="compact-sm"
+            mb="sm"
+            aria-label="Промени план"
+            onClick={() => {
+              setSelectedPlan(currentUser.plan ?? 'free');
+              setPlanModalOpened(true);
+            }}
+            disabled={currentUser.role === 'admin'}
+          >
+            {currentUser.role === 'admin'
+              ? 'Неограничено генерисање'
+              : `${planLabel} · ${remainingRequests}/${currentUser.dailyLimit} захтева преостало`}
+          </Button>
+        )}
         <ScrollArea flex={1}>
           <Stack gap="xs">
             {activeRoute ?
@@ -169,6 +236,29 @@ export function MapPage() {
         </Button>
       </AppShell.Navbar>
 
+      <Modal
+        opened={planModalOpened}
+        onClose={() => setPlanModalOpened(false)}
+        title="Промена плана"
+        centered
+        zIndex={2000}
+      >
+        <Stack>
+          <Text size="sm" c="dimmed">
+            План можете променити у било ком тренутку. Плаћање тренутно није потребно.
+          </Text>
+          <NativeSelect
+            label="План"
+            data={planOptions.map((option) => ({ value: option.value, label: option.label }))}
+            value={selectedPlan ?? 'free'}
+            onChange={(event) => setSelectedPlan(event.currentTarget.value as UserPlan)}
+          />
+          <Button loading={isUpgrading} disabled={!selectedPlan} onClick={() => void handlePlanChange()}>
+            Сачувај план
+          </Button>
+        </Stack>
+      </Modal>
+
       <AppShell.Main p={0} style={{ display: 'flex' }}>
         <MapContainer
           style={{ flex: 1 }}
@@ -213,7 +303,7 @@ export function MapPage() {
             variant="default"
             radius="xl"
             size={60}
-            aria-label="Toggle color scheme"
+            aria-label="Промени тему"
           >
             {colorScheme === 'dark' ? <IconSun stroke={1.5} size={30} /> : <IconMoon stroke={1.5} size={30} />}
           </ActionIcon>

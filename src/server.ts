@@ -40,6 +40,22 @@ const googleOAuthClient = GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET
     })
   : null;
 
+const userColumns = sqlite.prepare('PRAGMA table_info(users)').all() as Array<{ name: string }>;
+const addUserColumn = (name: string, definition: string) => {
+  if (!userColumns.some((column) => column.name === name)) {
+    sqlite.exec(`ALTER TABLE users ADD COLUMN ${name} ${definition}`);
+  }
+};
+
+addUserColumn('google_id', 'TEXT');
+addUserColumn('role', "TEXT NOT NULL DEFAULT 'user'");
+addUserColumn('plan', "TEXT NOT NULL DEFAULT 'free'");
+addUserColumn('daily_limit', 'INTEGER NOT NULL DEFAULT 3');
+addUserColumn('usage_date', 'TEXT');
+addUserColumn('usage_count', 'INTEGER NOT NULL DEFAULT 0');
+addUserColumn('created_at', 'INTEGER');
+sqlite.exec("UPDATE users SET role = 'user' WHERE role IS NULL OR role IN ('free', 'paid')");
+
 app.use(cors());
 app.use(express.json());
 
@@ -68,6 +84,30 @@ type RouteData = {
   stops: RouteStop[];
 };
 
+type UserRole = 'user' | 'admin';
+type UserPlan = 'free' | 'paid_10' | 'paid_50' | 'paid_100' | 'none';
+
+const PLAN_LIMITS: Record<Exclude<UserPlan, 'none'>, number> = {
+  free: 3,
+  paid_10: 10,
+  paid_50: 50,
+  paid_100: 100,
+};
+const USER_PLANS = ['free', 'paid_10', 'paid_50', 'paid_100'] as const;
+const getPlanRank = (plan: UserPlan) => plan === 'none' ? -1 : USER_PLANS.indexOf(plan);
+
+const getPlanLimit = (plan: UserPlan) => plan === 'none' ? 0 : PLAN_LIMITS[plan] ?? PLAN_LIMITS.free;
+
+type AuthenticatedUser = {
+  userId: number;
+  username: string;
+  role: UserRole;
+  plan: UserPlan;
+  dailyLimit: number;
+  usageDate: string | null;
+  usageCount: number;
+};
+
 type WikipediaSearchResult = {
   title: string;
   matched_title?: string | null;
@@ -93,6 +133,11 @@ const NOMINATIM_USER_AGENT =
 const NOMINATIM_EMAIL = process.env.NOMINATIM_EMAIL;
 type GeocodedPlace = { lat: number; lng: number; city?: string };
 const nominatimCache = new Map<string, GeocodedPlace | null>();
+
+if (process.env.ADMIN_USERNAME?.trim()) {
+  sqlite.prepare("UPDATE users SET role = 'admin', plan = '', daily_limit = 0 WHERE username = ?")
+    .run(process.env.ADMIN_USERNAME.trim());
+}
 
 const normalizeThumbnailUrl = (url?: string) => {
   if (!url) return undefined;
@@ -268,14 +313,107 @@ const enrichStopsWithImages = async (stops: RouteStop[], report?: ProgressReport
   );
 };
 
+const getUserById = (userId: number): AuthenticatedUser | undefined => {
+  const user = sqlite.prepare(
+    'SELECT id, username, role, plan, daily_limit, usage_date, usage_count FROM users WHERE id = ?',
+  ).get(userId) as {
+    id: number;
+    username: string;
+    role: string;
+    plan: string;
+    daily_limit: number;
+    usage_date: string | null;
+    usage_count: number;
+  } | undefined;
+
+  if (!user) return undefined;
+
+  const role: UserRole = user.role === 'admin' ? 'admin' : 'user';
+  const plan: UserPlan = role === 'admin' ? 'none' : user.plan as UserPlan;
+
+  return {
+    userId: user.id,
+    username: user.username,
+    role,
+    plan,
+    dailyLimit: getPlanLimit(plan),
+    usageDate: user.usage_date,
+    usageCount: user.usage_count,
+  };
+};
+
+const toPublicUser = (user: AuthenticatedUser | undefined) => {
+  if (!user) return undefined;
+  return {
+    ...user,
+    plan: user.role === 'admin' ? null : user.plan,
+  };
+};
+
+const getToday = () => new Date().toISOString().slice(0, 10);
+
+const getNextResetAt = () => {
+  const reset = new Date();
+  reset.setUTCHours(24, 0, 0, 0);
+  return reset.toISOString();
+};
+
+const consumeGenerationQuota = (userId: number) => {
+  const user = getUserById(userId);
+  if (!user) return { allowed: false, reason: 'Корисник није пронађен.' };
+  if (user.role === 'admin') return { allowed: true, remaining: null, limit: null, resetAt: null };
+
+  const today = getToday();
+  const usageCount = user.usageDate === today ? user.usageCount : 0;
+  const limit = getPlanLimit(user.plan);
+
+  if (usageCount >= limit) {
+    return {
+      allowed: false,
+      reason: `Достигнут је дневни лимит захтева (${limit}).`,
+      remaining: 0,
+      limit,
+      resetAt: getNextResetAt(),
+    };
+  }
+
+  const nextUsageCount = usageCount + 1;
+  sqlite.prepare('UPDATE users SET usage_date = ?, usage_count = ? WHERE id = ?')
+    .run(today, nextUsageCount, userId);
+
+  return {
+    allowed: true,
+    remaining: limit - nextUsageCount,
+    limit,
+    resetAt: getNextResetAt(),
+  };
+};
+
 // Middleware за аутентификацију
 const auth = (req: any, res: any, next: any) => {
   const token = req.headers.authorization?.split(' ')[1];
-  if (!token) return res.status(401).send('No token');
+  if (!token) return res.status(401).send('Недостаје токен.');
   try {
-    req.user = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET) as { userId: number };
+    const user = getUserById(decoded.userId);
+    if (!user) return res.status(401).send('Корисник није пронађен.');
+    req.user = user;
     next();
-  } catch { res.status(401).send('Invalid token'); }
+  } catch { res.status(401).send('Неважећи токен.'); }
+};
+
+const adminOnly = (req: any, res: any, next: any) => {
+  if (req.user?.role !== 'admin') {
+    return res.status(403).json({ error: 'Потребан је администраторски приступ.' });
+  }
+  next();
+};
+
+const nonAdminOnly = (req: any, res: any, next: any) => {
+  if (req.user?.role === 'admin') {
+    return res.status(403).json({ error: 'Администратори имају приступ само административним функцијама.' });
+  }
+  next();
 };
 
 const getCookies = (header?: string) => Object.fromEntries(
@@ -293,7 +431,7 @@ const redirectToLogin = (res: express.Response, params: Record<string, string>) 
 
 app.get('/api/auth/google', (req, res) => {
   if (!googleOAuthClient) {
-    return redirectToLogin(res, { error: 'Google authentication is not configured on the server.' });
+    return redirectToLogin(res, { error: 'Google аутентификација није подешена на серверу.' });
   }
 
   const state = randomBytes(24).toString('hex');
@@ -321,17 +459,17 @@ app.get('/api/auth/google/callback', async (req, res) => {
   }
 
   if (typeof code !== 'string' || typeof state !== 'string' || !storedState || state !== storedState) {
-    return redirectToLogin(res, { error: 'Invalid Google authentication state.' });
+    return redirectToLogin(res, { error: 'Неважеће стање Google аутентификације.' });
   }
 
   if (!googleOAuthClient || !GOOGLE_CLIENT_ID) {
-    return redirectToLogin(res, { error: 'Google authentication is not configured on the server.' });
+    return redirectToLogin(res, { error: 'Google аутентификација није подешена на серверу.' });
   }
 
   try {
     const { tokens } = await googleOAuthClient.getToken(code);
     if (!tokens.id_token) {
-      return redirectToLogin(res, { error: 'Google did not return an identity token.' });
+    return redirectToLogin(res, { error: 'Google није вратио идентификациони токен.' });
     }
 
     const ticket = await googleOAuthClient.verifyIdToken({
@@ -341,7 +479,7 @@ app.get('/api/auth/google/callback', async (req, res) => {
     const payload = ticket.getPayload();
 
     if (!payload?.sub || !payload.email || payload.email_verified === false) {
-      return redirectToLogin(res, { error: 'Google did not provide a verified email address.' });
+      return redirectToLogin(res, { error: 'Google није доставио верификовану имејл адресу.' });
     }
 
     let user = sqlite.prepare('SELECT * FROM users WHERE google_id = ?').get(payload.sub) as { id: number; username: string } | undefined;
@@ -355,10 +493,11 @@ app.get('/api/auth/google/callback', async (req, res) => {
 
     if (!user) {
       const password = await bcrypt.hash(randomBytes(32).toString('hex'), 10);
-      const result = sqlite.prepare('INSERT INTO users (username, password, google_id) VALUES (?, ?, ?)').run(
+      const result = sqlite.prepare('INSERT INTO users (username, password, google_id, created_at) VALUES (?, ?, ?, ?)').run(
         payload.email,
         password,
         payload.sub,
+        Date.now(),
       );
       user = { id: Number(result.lastInsertRowid), username: payload.email };
     }
@@ -368,8 +507,124 @@ app.get('/api/auth/google/callback', async (req, res) => {
     return redirectToLogin(res, { token });
   } catch (oauthError) {
     console.error('Google authentication failed:', oauthError);
-    return redirectToLogin(res, { error: 'Google authentication failed. Please try again.' });
+    return redirectToLogin(res, { error: 'Google аутентификација није успела. Покушајте поново.' });
   }
+});
+
+app.get('/api/me', auth, (req: any, res) => {
+  res.json(toPublicUser(req.user));
+});
+
+app.patch('/api/me/plan', auth, nonAdminOnly, (req: any, res) => {
+  const requestedPlan = req.body.plan as UserPlan;
+  if (!USER_PLANS.includes(requestedPlan as typeof USER_PLANS[number])) {
+    return res.status(400).json({ error: 'Неважећи план.' });
+  }
+
+  sqlite.prepare('UPDATE users SET plan = ?, daily_limit = ? WHERE id = ?')
+    .run(requestedPlan, getPlanLimit(requestedPlan), req.user.userId);
+
+  res.json(toPublicUser(getUserById(req.user.userId)));
+});
+
+app.get('/api/admin/stats', auth, adminOnly, (req, res) => {
+  const today = getToday();
+  const userStats = sqlite.prepare(`
+    SELECT
+      COUNT(*) AS total_users,
+      SUM(CASE WHEN role != 'admin' AND plan = 'free' THEN 1 ELSE 0 END) AS free_users,
+      SUM(CASE WHEN role != 'admin' AND plan IN ('paid_10', 'paid_50', 'paid_100') THEN 1 ELSE 0 END) AS paid_users,
+      SUM(CASE WHEN role = 'admin' THEN 1 ELSE 0 END) AS admin_users,
+      COALESCE(SUM(CASE WHEN usage_date = ? THEN usage_count ELSE 0 END), 0) AS requests_today
+    FROM users
+  `).get(today) as Record<string, number>;
+  const routeStats = sqlite.prepare(`
+    SELECT
+      COUNT(*) AS total_routes,
+      COALESCE(SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END), 0) AS routes_today
+    FROM routes
+  `).get(Date.now() - 24 * 60 * 60 * 1000) as Record<string, number>;
+
+  res.json({
+    totalUsers: Number(userStats.total_users ?? 0),
+    freeUsers: Number(userStats.free_users ?? 0),
+    paidUsers: Number(userStats.paid_users ?? 0),
+    adminUsers: Number(userStats.admin_users ?? 0),
+    requestsToday: Number(userStats.requests_today ?? 0),
+    totalRoutes: Number(routeStats.total_routes ?? 0),
+    routesToday: Number(routeStats.routes_today ?? 0),
+  });
+});
+
+app.get('/api/admin/users', auth, adminOnly, (req, res) => {
+  const users = sqlite.prepare(`
+    SELECT
+      users.id,
+      users.username,
+      users.role,
+      users.plan,
+      users.daily_limit,
+      users.usage_date,
+      users.usage_count,
+      users.created_at,
+      COUNT(routes.id) AS total_routes
+    FROM users
+    LEFT JOIN routes ON routes.user_id = users.id
+    GROUP BY users.id
+    ORDER BY users.id DESC
+  `).all() as Array<Record<string, unknown>>;
+
+  res.json(users.map((user) => ({
+    id: Number(user.id),
+    username: String(user.username),
+    role: String(user.role),
+    plan: user.role === 'admin' ? null : String(user.plan),
+    dailyLimit: getPlanLimit(user.role === 'admin' ? 'none' : user.plan as UserPlan),
+    usageDate: user.usage_date,
+    usageCount: Number(user.usage_count),
+    totalRoutes: Number(user.total_routes ?? 0),
+    createdAt: user.created_at,
+  })));
+});
+
+app.patch('/api/admin/users/:id', auth, adminOnly, (req, res) => {
+  const userId = Number(req.params.id);
+  const currentUser = getUserById(userId);
+  if (!currentUser) return res.status(404).json({ error: 'Корисник није пронађен.' });
+
+  const requestedRole = req.body.role as UserRole;
+  const allowedRoles: UserRole[] = ['user', 'admin'];
+  if (!allowedRoles.includes(requestedRole)) {
+    return res.status(400).json({ error: 'Неважећа улога.' });
+  }
+
+  if (currentUser.role === 'admin' && requestedRole !== 'admin') {
+    const adminCountResult = sqlite.prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'admin'").get() as { count: number };
+    const adminCount = Number(adminCountResult.count);
+    if (adminCount <= 1) {
+      return res.status(400).json({ error: 'Последњи администратор не може бити деградиран.' });
+    }
+  }
+
+  const requestedPlan = req.body.plan as UserPlan | undefined;
+  const paidPlans: UserPlan[] = ['paid_10', 'paid_50', 'paid_100'];
+  let plan: UserPlan;
+  if (requestedRole === 'user' && requestedPlan === 'free') {
+    plan = 'free';
+  } else if (requestedRole === 'admin') {
+    plan = 'none';
+  } else if (requestedPlan && paidPlans.includes(requestedPlan)) {
+    plan = requestedPlan;
+  } else {
+    plan = currentUser.plan === 'free' || paidPlans.includes(currentUser.plan) ? currentUser.plan : 'free';
+  }
+
+  const dailyLimit = requestedRole === 'admin' ? 0 : getPlanLimit(plan);
+
+  sqlite.prepare('UPDATE users SET role = ?, plan = ?, daily_limit = ? WHERE id = ?')
+    .run(requestedRole, requestedRole === 'admin' ? '' : plan, dailyLimit, userId);
+
+  res.json(toPublicUser(getUserById(userId)));
 });
 
 const fetchRoute = async (waypoints: string[]): Promise<[number, number][] | null> => {
@@ -388,29 +643,29 @@ app.post('/api/login', async (req, res) => {
   if (user && await bcrypt.compare(password, user.password)) {
     const token = jwt.sign({ userId: user.id }, JWT_SECRET);
     res.json({ token });
-  } else { res.status(401).send('Wrong credentials'); }
+  } else { res.status(401).send('Погрешни подаци за пријаву.'); }
 });
 
 app.post('/api/register', async (req, res) => {
   const { username, password } = req.body;
 
   if (!username || !password) {
-    return res.status(400).send('Username and password are required.');
+    return res.status(400).send('Корисничко име и лозинка су обавезни.');
   }
 
   try {
     const existingUser = sqlite.prepare('SELECT * FROM users WHERE username = ?').get(username);
     if (existingUser) {
-      return res.status(409).send('Username already exists.');
+    return res.status(409).send('Корисничко име већ постоји.');
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const result = sqlite.prepare('INSERT INTO users (username, password) VALUES (?, ?)').run(username, hashedPassword);
+    const result = sqlite.prepare('INSERT INTO users (username, password, created_at) VALUES (?, ?, ?)').run(username, hashedPassword, Date.now());
 
-    res.status(201).json({ message: 'User registered successfully', userId: result.lastInsertRowid });
+    res.status(201).json({ message: 'Корисник је успешно регистрован.', userId: result.lastInsertRowid });
   } catch (error) {
     console.error('Error during user registration:', error);
-    res.status(500).send('Internal server error.');
+    res.status(500).send('Интерна грешка сервера.');
   }
 });
 
@@ -422,7 +677,7 @@ app.post('/api/forgot-password', async (req, res) => {
     if (!user) {
       // For security, always respond with a generic success message
       // to avoid leaking information about existing usernames.
-      return res.status(200).send('If a user with that username exists, a password reset link has been sent.');
+      return res.status(200).send('Ако корисник са тим именом постоји, линк за ресетовање лозинке је послат.');
     }
 
     const resetToken = randomBytes(32).toString('hex');
@@ -434,10 +689,10 @@ app.post('/api/forgot-password', async (req, res) => {
     // In a real application, you would email this token to the user.
     // Example: sendEmail(user.email, resetTokenLink);
 
-    res.status(200).send('If a user with that username exists, a password reset link has been sent.');
+    res.status(200).send('Ако корисник са тим именом постоји, линк за ресетовање лозинке је послат.');
   } catch (error) {
     console.error('Error during forgot password request:', error);
-    res.status(500).send('Internal server error.');
+    res.status(500).send('Интерна грешка сервера.');
   }
 });
 
@@ -445,14 +700,14 @@ app.post('/api/reset-password', async (req, res) => {
   const { username, token, newPassword } = req.body;
 
   if (!username || !token || !newPassword) {
-    return res.status(400).send('Username, token, and new password are required.');
+    return res.status(400).send('Корисничко име, токен и нова лозинка су обавезни.');
   }
 
   try {
     const user = sqlite.prepare('SELECT * FROM users WHERE username = ?').get(username) as any;
 
     if (!user || user.resetToken !== token || user.resetTokenExpiry < Date.now()) {
-      return res.status(400).send('Invalid or expired reset token.');
+      return res.status(400).send('Ресет токен је неважећи или је истекао.');
     }
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
@@ -460,16 +715,26 @@ app.post('/api/reset-password', async (req, res) => {
     // Update password and clear reset token fields
     sqlite.prepare('UPDATE users SET password = ?, resetToken = NULL, resetTokenExpiry = NULL WHERE id = ?').run(hashedPassword, user.id);
 
-    res.status(200).send('Password has been reset successfully.');
+    res.status(200).send('Лозинка је успешно ресетована.');
   } catch (error) {
     console.error('Error during password reset:', error);
-    res.status(500).send('Internal server error.');
+    res.status(500).send('Интерна грешка сервера.');
   }
 });
 
-app.post('/api/generate', auth, async (req: any, res) => {
+app.post('/api/generate', auth, nonAdminOnly, async (req: any, res) => {
   if (typeof req.body.prompt !== 'string' || !req.body.prompt.trim()) {
-    return res.status(400).json({ error: 'Prompt is required.' });
+    return res.status(400).json({ error: 'Унос је обавезан.' });
+  }
+
+  const quota = consumeGenerationQuota(req.user.userId);
+  if (!quota.allowed) {
+    return res.status(429).json({
+      error: quota.reason,
+      remaining: quota.remaining,
+      limit: quota.limit,
+      resetAt: quota.resetAt,
+    });
   }
 
   res.status(200);
@@ -489,7 +754,13 @@ app.post('/api/generate', auth, async (req: any, res) => {
   };
 
   try {
-    sendProgress({ step: 'started', message: 'Покрећем планирање путовања.', percent: 0 });
+    sendProgress({
+      step: 'started',
+      message: quota.limit === null
+        ? 'Покрећем планирање путовања.'
+        : `Покрећем планирање путовања. Преостало захтева данас: ${quota.remaining}.`,
+      percent: 0,
+    });
     sendProgress({ step: 'ai_started', message: 'AI агент осмишљава руту.', percent: 10 });
 
     const completion = await client.chat.completions.create({
@@ -574,7 +845,7 @@ app.post('/api/generate', auth, async (req: any, res) => {
   }
 });
 
-app.get('/api/routes', auth, async (req: any, res) => {
+app.get('/api/routes', auth, nonAdminOnly, async (req: any, res) => {
   try {
     const result = await db.select({
       id: schema.routes.id,
@@ -588,11 +859,11 @@ app.get('/api/routes', auth, async (req: any, res) => {
     res.json(result);
   } catch (error) {
     console.error('Error fetching routes:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Интерна грешка сервера.' });
   }
 });
 
-app.get('/api/routes/:id', auth, async (req: any, res) => {
+app.get('/api/routes/:id', auth, nonAdminOnly, async (req: any, res) => {
   try {
     const { id } = req.params;
     const result = await db.select().from(schema.routes)
@@ -600,29 +871,29 @@ app.get('/api/routes/:id', auth, async (req: any, res) => {
       .limit(1);
 
     if (result.length === 0) {
-      return res.status(404).json({ error: 'Route not found' });
+      return res.status(404).json({ error: 'Рута није пронађена.' });
     }
 
     res.json(result[0]);
   } catch (error) {
     console.error('Error fetching route details:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Интерна грешка сервера.' });
   }
 });
 
-app.delete('/api/routes/:id', auth, async (req: any, res) => {
+app.delete('/api/routes/:id', auth, nonAdminOnly, async (req: any, res) => {
   try {
     const { id } = req.params;
     const result = await db.delete(schema.routes)
       .where(eq(schema.routes.id, id))
       .returning();
     if (result.length === 0) {
-      return res.status(404).json({ error: 'Route not found' });
+      return res.status(404).json({ error: 'Рута није пронађена.' });
     }
-    res.json({ message: 'Route removed from history' });
+    res.json({ message: 'Рута је уклоњена из историје.' });
   } catch (error) {
     console.error('Error removing route:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Интерна грешка сервера.' });
   }
 });
 

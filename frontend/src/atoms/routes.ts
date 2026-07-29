@@ -29,6 +29,18 @@ export type GenerationProgress = {
   percent?: number;
 };
 
+export class GenerationLimitError extends Error {
+  readonly limit: number | null;
+  readonly resetAt: string | null;
+
+  constructor(message: string, limit: number | null, resetAt: string | null) {
+    super(message);
+    this.name = 'GenerationLimitError';
+    this.limit = limit;
+    this.resetAt = resetAt;
+  }
+}
+
 export const routesAtom = atom<SavedRoute[]>([]);
 export const activeRouteAtom = atom<RouteStop[] | null>(null);
 export const routeCoordinatesAtom = atom<RouteCoordinate[] | null>(null);
@@ -54,7 +66,7 @@ export function useRoutes() {
     });
 
     if (!response.ok) {
-      throw new Error(`Request failed with status ${response.status}`);
+      throw new Error(`Захтев није успео (статус ${response.status}).`);
     }
 
     return response.json() as Promise<T>;
@@ -87,12 +99,23 @@ export function useRoutes() {
       });
 
       if (!response.ok) {
-        const message = await response.text();
-        throw new Error(message || `Request failed with status ${response.status}`);
+        const responseText = await response.text();
+        let message = responseText;
+        let payload: { error?: string; limit?: number | null; resetAt?: string | null } | null = null;
+        try {
+          payload = JSON.parse(responseText) as { error?: string; limit?: number | null; resetAt?: string | null };
+          message = payload.error || responseText;
+        } catch {
+          // Keep the raw response when the server did not return JSON.
+        }
+        if (response.status === 429) {
+          throw new GenerationLimitError(message || 'Достигнут је дневни лимит захтева.', payload?.limit ?? null, payload?.resetAt ?? null);
+        }
+        throw new Error(message || `Захтев није успео (статус ${response.status}).`);
       }
 
       if (!response.body) {
-        throw new Error('The server did not return a progress stream.');
+        throw new Error('Сервер није вратио ток напретка.');
       }
 
       const reader = response.body.getReader();
@@ -130,7 +153,7 @@ export function useRoutes() {
         }
 
         if (resolvedEventType === 'error') {
-          throw new Error(event.message || 'Route generation failed.');
+          throw new Error(event.message || 'Генерисање руте није успело.');
         }
 
         if (resolvedEventType === 'complete' && event.route) {
@@ -161,7 +184,7 @@ export function useRoutes() {
       }
 
       if (!completedRoute) {
-        throw new Error('The route generation stream ended before completion.');
+        throw new Error('Ток генерисања руте је завршен пре него што је процес довршен.');
       }
 
       return completedRoute;

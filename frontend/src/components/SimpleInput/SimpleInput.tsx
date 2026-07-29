@@ -18,7 +18,7 @@ export function SimpleInput({ onChange, onClick, disabled = false }: { onChange:
           radius="xl"
           color={theme.primaryColor}
           variant="filled"
-          aria-label="Search"
+          aria-label="Претрага"
           onClick={onClick}
           disabled={disabled}
         >
@@ -33,7 +33,7 @@ export function SimpleInput({ onChange, onClick, disabled = false }: { onChange:
       ])}
       disabled={disabled}
       flex={1}
-      aria-label="Search questions"
+      aria-label="Претрага путовања"
     />
   );
 }

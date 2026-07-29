@@ -67,9 +67,19 @@ GOOGLE_CLIENT_SECRET=your-google-client-secret
 GOOGLE_REDIRECT_URI=http://localhost:3000/api/auth/google/callback
 FRONTEND_URL=http://localhost:5173
 JWT_SECRET=replace-with-a-long-random-secret
+ADMIN_USERNAME=admin@example.com
 ```
 
 Google authentication supports both sign-in and sign-up. A Google user is created automatically on the first successful authentication and linked to an existing local account when the email matches.
+
+### Roles and request limits
+
+Users have one of two roles:
+
+- `user`: assigned either the free plan or a virtual paid plan with 10, 50, or 100 requests per day, priced at $5, $10, or $25 per month
+- `admin`: administration-only access to `/admin`; no plan and no map, route-generation, or saved-route access
+
+Payment processing is not implemented. An administrator can change a user's role and virtual plan from the administration panel. Daily limits are derived from the selected plan. To bootstrap an administrator, set `ADMIN_USERNAME` to an existing username and restart the backend.
 
 ### Nominatim geocoding
 
