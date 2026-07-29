@@ -55,6 +55,7 @@ const client = new OpenAI({
 
 type RouteStop = {
   place: string;
+  city?: string;
   lat: number;
   lng: number;
   description: string;
@@ -86,12 +87,19 @@ const WIKIPEDIA_HEADERS = {
   Accept: 'application/json',
 };
 
+const NOMINATIM_USER_AGENT =
+  process.env.NOMINATIM_USER_AGENT ??
+  'AI Roadtrip Planner/1.0 (geocoding; configure NOMINATIM_USER_AGENT for production)';
+const NOMINATIM_EMAIL = process.env.NOMINATIM_EMAIL;
+type GeocodedPlace = { lat: number; lng: number; city?: string };
+const nominatimCache = new Map<string, GeocodedPlace | null>();
+
 const normalizeThumbnailUrl = (url?: string) => {
   if (!url) return undefined;
   return url.replace('60px', '500px').replace('//', 'https://');
 };
 
-const getStopSearchLabel = (stop: RouteStop) => stop.place?.trim() || '';
+const getStopSearchLabel = (stop: RouteStop) => [...new Set([stop.place?.trim(), stop.city?.trim()].filter(Boolean))].join(', ');
 
 const fetchWikipediaImage = async (query: string) => {
   if (!query) {
@@ -111,20 +119,148 @@ const fetchWikipediaImage = async (query: string) => {
   return normalizeThumbnailUrl(pages[0]?.thumbnail?.url);
 };
 
-const enrichStopsWithImages = async (stops: RouteStop[]) => {
+type GenerationEvent = {
+  type: 'progress' | 'error' | 'complete';
+  step?: string;
+  message?: string;
+  percent?: number;
+  route?: unknown;
+};
+
+type ProgressReporter = (event: Omit<GenerationEvent, 'type'>) => void;
+
+type NominatimSearchResult = {
+  lat?: string;
+  lon?: string;
+  address?: Record<string, string | undefined>;
+};
+
+const getClosestCity = (address?: Record<string, string | undefined>) =>
+  address?.city || address?.town || address?.village || address?.municipality || address?.hamlet;
+
+const fetchNominatimCoordinates = async (query: string) => {
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  if (!normalizedQuery) return undefined;
+
+  if (nominatimCache.has(normalizedQuery)) {
+    return nominatimCache.get(normalizedQuery) ?? undefined;
+  }
+
+  const response = await axios.get<NominatimSearchResult[]>('https://nominatim.openstreetmap.org/search', {
+    params: {
+      q: query,
+      format: 'jsonv2',
+      limit: 1,
+      addressdetails: 1,
+      ...(NOMINATIM_EMAIL ? { email: NOMINATIM_EMAIL } : {}),
+    },
+    headers: {
+      'User-Agent': NOMINATIM_USER_AGENT,
+      Referer: FRONTEND_URL,
+      Accept: 'application/json',
+    },
+    timeout: 8000,
+  });
+
+  const result = response.data[0];
+  const lat = Number(result?.lat);
+  const lng = Number(result?.lon);
+  const city = getClosestCity(result?.address);
+  const coordinates = Number.isFinite(lat) && Number.isFinite(lng)
+    ? { lat, lng, ...(city ? { city } : {}) }
+    : null;
+  nominatimCache.set(normalizedQuery, coordinates);
+  return coordinates ?? undefined;
+};
+
+const wait = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+const geocodeStops = async (stops: RouteStop[], report?: ProgressReporter) => {
+  const geocodedStops: RouteStop[] = [];
+
+  for (const [index, stop] of stops.entries()) {
+    const label = getStopSearchLabel(stop) || `стajалиште ${index + 1}`;
+    report?.({
+      step: 'geocode_started',
+      message: `Проналазим прецизније координате за: ${label}`,
+    });
+
+    try {
+      const coordinates = await fetchNominatimCoordinates(label);
+      if (coordinates) {
+        geocodedStops.push({ ...stop, ...coordinates, city: coordinates.city ?? stop.city });
+        report?.({
+          step: 'geocode_completed',
+          message: `Координате су ажуриране за: ${label}`,
+          percent: Math.round(((index + 1) / stops.length) * 100),
+        });
+      } else {
+        geocodedStops.push(stop);
+        report?.({
+          step: 'geocode_failed',
+          message: `Координате нису пронађене за: ${label}; користим AI координате.`,
+          percent: Math.round(((index + 1) / stops.length) * 100),
+        });
+      }
+    } catch (error) {
+      console.error(`Error geocoding stop "${label}":`, error);
+      geocodedStops.push(stop);
+      report?.({
+        step: 'geocode_failed',
+        message: `Геокодирање није успело за: ${label}; користим AI координате.`,
+        percent: Math.round(((index + 1) / stops.length) * 100),
+      });
+    }
+
+    if (index < stops.length - 1) {
+      await wait(1000);
+    }
+  }
+
+  return geocodedStops;
+};
+
+const enrichStopsWithImages = async (stops: RouteStop[], report?: ProgressReporter) => {
   return Promise.all(
-    stops.map(async (stop) => {
+    stops.map(async (stop, index) => {
+      const label = getStopSearchLabel(stop) || `стajалиште ${index + 1}`;
+
       if (stop.image) {
+        report?.({
+          step: 'image_completed',
+          message: `Слика већ постоји за: ${label}`,
+          percent: Math.round(((index + 1) / stops.length) * 100),
+        });
         return stop;
       }
+
+      report?.({
+        step: 'image_started',
+        message: `Проналазим слику за: ${label}`,
+      });
 
       try {
         const image = await fetchWikipediaImage(getStopSearchLabel(stop));
         if (image) {
+          report?.({
+            step: 'image_completed',
+            message: `Слика је пронађена за: ${label}`,
+            percent: Math.round(((index + 1) / stops.length) * 100),
+          });
           return { ...stop, image };
         }
+        report?.({
+          step: 'image_failed',
+          message: `Слика није пронађена за: ${label}`,
+          percent: Math.round(((index + 1) / stops.length) * 100),
+        });
       } catch (error) {
-        console.error(`Error fetching image for stop "${getStopSearchLabel(stop)}":`, error);
+        console.error(`Error fetching image for stop "${label}":`, error);
+        report?.({
+          step: 'image_failed',
+          message: `Слика није могла да се учита за: ${label}`,
+          percent: Math.round(((index + 1) / stops.length) * 100),
+        });
       }
 
       return stop;
@@ -332,16 +468,40 @@ app.post('/api/reset-password', async (req, res) => {
 });
 
 app.post('/api/generate', auth, async (req: any, res) => {
+  if (typeof req.body.prompt !== 'string' || !req.body.prompt.trim()) {
+    return res.status(400).json({ error: 'Prompt is required.' });
+  }
+
+  res.status(200);
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
+  const sendEvent = (event: GenerationEvent) => {
+    if (res.writableEnded || res.destroyed) return;
+    res.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+  };
+
+  const sendProgress = (event: Omit<GenerationEvent, 'type'>) => {
+    sendEvent({ type: 'progress', ...event });
+  };
+
   try {
+    sendProgress({ step: 'started', message: 'Покрећем планирање путовања.', percent: 0 });
+    sendProgress({ step: 'ai_started', message: 'AI агент осмишљава руту.', percent: 10 });
+
     const completion = await client.chat.completions.create({
       messages: [
-        { role: "system", content: "Ти си планер путовања. Опис и разлог посете објаснити у најмање 3 реченице и да се не понављају. Врати ИСКЉУЧИВО JSON: {\"title\": \"Наслов\", \"stops\": [{\"place\": \"Место\", \"lat\": 44, \"lng\": 20, \"description\": \"Опис\", \"reason\": \"Разлог\"}]}" },
+        { role: "system", content: "Ти си планер путовања. За свако стајалиште наведи назив места и најближи град. Опис и разлог посете објаснити у најмање 3 реченице и да се не понављају. Врати ИСКЉУЧИВО JSON: {\"title\": \"Наслов\", \"stops\": [{\"place\": \"Место\", \"city\": \"Најближи град\", \"lat\": 44, \"lng\": 20, \"description\": \"Опис\", \"reason\": \"Разлог\"}]}" },
         { role: "user", content: req.body.prompt }
       ],
       // model: "mistral-small-latest",
       model: "gemini-3-flash-preview",
       response_format: { type: "json_object" },
     });
+    sendProgress({ step: 'ai_completed', message: 'AI агент је направио предлог руте.', percent: 35 });
 
     let routeData: RouteData;
 
@@ -350,13 +510,50 @@ app.post('/api/generate', auth, async (req: any, res) => {
     } catch (error) {
       console.error('Error parsing route data:', error);
       console.log(completion);
-      return res.status(500).send('Error parsing route data');
+      throw new Error('AI није вратио исправан формат руте.');
     }
 
-    const stops = await enrichStopsWithImages(routeData.stops ?? []);
+    if (!routeData.title || !Array.isArray(routeData.stops)) {
+      throw new Error('AI није вратио валидне податке о рути.');
+    }
+
+    const generatedStops = routeData.stops;
+    sendProgress({
+      step: 'geocoding_started',
+      message: `Проверавам координате за ${generatedStops.length} стајалишта.`,
+      percent: 35,
+    });
+    const geocodedStops = await geocodeStops(generatedStops, (event) => {
+      sendProgress({
+        ...event,
+        percent: event.percent === undefined ? 35 : 35 + Math.round(event.percent * 0.1),
+      });
+    });
+    sendProgress({ step: 'geocoding_completed', message: 'Координате су проверене преко Nominatim-а.', percent: 45 });
+
+    sendProgress({
+      step: 'images_started',
+      message: `Обогаћујем ${geocodedStops.length} стајалишта сликама.`,
+      percent: 50,
+    });
+    const stops = await enrichStopsWithImages(geocodedStops, (event) => {
+      sendProgress({
+        ...event,
+        percent: event.percent === undefined ? 50 : 50 + Math.round(event.percent * 0.3),
+      });
+    });
+    sendProgress({ step: 'images_completed', message: 'Обогаћивање сликама је завршено.', percent: 80 });
+
+    sendProgress({ step: 'route_started', message: 'Израчунавам путну трасу.', percent: 85 });
     const waypoints = stops.map(stop => `${stop.lng},${stop.lat}`);
     const routeCoordinates = await fetchRoute(waypoints);
+    if (!routeCoordinates) {
+      sendProgress({ step: 'route_warning', message: 'Путна траса није доступна, али рута може бити сачувана.', percent: 90 });
+    } else {
+      sendProgress({ step: 'route_completed', message: 'Путна траса је израчуната.', percent: 90 });
+    }
 
+    sendProgress({ step: 'saving_started', message: 'Чувам руту.', percent: 95 });
     const result = await db.insert(schema.routes).values({
       userId: req.user.userId,
       title: routeData.title,
@@ -364,8 +561,17 @@ app.post('/api/generate', auth, async (req: any, res) => {
       data: JSON.stringify(stops),
       path: JSON.stringify((routeCoordinates ?? []).map(coord => [coord[1], coord[0]]))
     }).returning();
-    res.json(result[0]);
-  } catch (e) { res.status(500).send(e); }
+    sendEvent({ type: 'complete', step: 'completed', message: 'Путовање је успешно испланирано.', percent: 100, route: result[0] });
+  } catch (error) {
+    console.error('Error generating route:', error);
+    sendEvent({
+      type: 'error',
+      step: 'failed',
+      message: error instanceof Error ? error.message : 'Генерисање руте није успело.',
+    });
+  } finally {
+    res.end();
+  }
 });
 
 app.get('/api/routes', auth, async (req: any, res) => {

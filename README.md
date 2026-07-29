@@ -71,6 +71,19 @@ JWT_SECRET=replace-with-a-long-random-secret
 
 Google authentication supports both sign-in and sign-up. A Google user is created automatically on the first successful authentication and linked to an existing local account when the email matches.
 
+### Nominatim geocoding
+
+Generated stop coordinates are checked through Nominatim before image enrichment. If Nominatim finds a place, its coordinates replace the AI coordinates. If it does not find a place or is unavailable, the AI coordinates are retained.
+
+Configure a descriptive User-Agent and, optionally, a contact email in `.env`:
+
+```text
+NOMINATIM_USER_AGENT=AI Roadtrip Planner/1.0 (contact: you@example.com)
+NOMINATIM_EMAIL=you@example.com
+```
+
+The implementation performs lookups sequentially, waits at least one second between uncached requests, and caches results in memory to respect the [Nominatim usage policy](https://operations.osmfoundation.org/policies/nominatim/). Map attribution is shown through Leaflet.
+
 ## Usage
 
 1. Register or log in to the application.

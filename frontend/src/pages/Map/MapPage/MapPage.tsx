@@ -129,8 +129,11 @@ export function MapPage() {
                 <Accordion>
                   {
                     activeRoute?.map(item => (
-                      <Accordion.Item key={item.place} value={item.place}>
-                        <Accordion.Control>{item.place}</Accordion.Control>
+                      <Accordion.Item key={`${item.place}-${item.city ?? ''}`} value={`${item.place}-${item.city ?? ''}`}>
+                        <Accordion.Control>
+                          {item.place}
+                          {item.city && <Text component="span" size="sm" c="dimmed">{`, ${item.city}`}</Text>}
+                        </Accordion.Control>
                         <Accordion.Panel>
                           <Stack gap="sm">
                             {item.image && (
@@ -172,13 +175,19 @@ export function MapPage() {
           center={activeRoute ? [activeRoute[0].lat, activeRoute[0].lng] : [43.89139, 20.34972]}
           zoom={activeRoute ? 6 : 7}
         >
-          <TileLayer url={colorScheme === 'dark' ? "https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png" : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"} />
+          <TileLayer
+            url={colorScheme === 'dark' ? "https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png" : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"}
+            attribution="&copy; OpenStreetMap contributors"
+          />
           {activeRoute && (<>
             {activeRoute.map((stop, index) => (
               <Marker key={index} position={[stop.lat, stop.lng]} icon={customIcon}>
                 <Popup>
                   <div>
-                    <Text fw={600}>{stop.place}</Text>
+                    <Text fw={600}>
+                      {stop.place}
+                      {stop.city && <Text component="span" size="sm" c="dimmed">{`, ${stop.city}`}</Text>}
+                    </Text>
                     <Text size="sm">{stop.reason}</Text>
                     {stop.image && <img src={stop.image} alt={stop.place} style={{ width: '100%', marginTop: 8 }} />}
                   </div>
