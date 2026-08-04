@@ -4,6 +4,13 @@ const userColumns = sqlite.prepare("PRAGMA table_info(users)").all() as Array<{
   name: string;
 }>;
 
+if (
+  !userColumns.some((column) => column.name === "email") &&
+  userColumns.some((column) => column.name === "username")
+) {
+  sqlite.exec("ALTER TABLE users RENAME COLUMN username TO email");
+}
+
 const addUserColumn = (name: string, definition: string) => {
   if (!userColumns.some((column) => column.name === name)) {
     sqlite.exec(`ALTER TABLE users ADD COLUMN ${name} ${definition}`);
@@ -21,10 +28,11 @@ sqlite.exec(
   "UPDATE users SET role = 'user' WHERE role IS NULL OR role IN ('free', 'paid')",
 );
 
-if (process.env.ADMIN_USERNAME?.trim()) {
+const adminEmail = (process.env.ADMIN_EMAIL ?? process.env.ADMIN_USERNAME)?.trim();
+if (adminEmail) {
   sqlite
     .prepare(
-      "UPDATE users SET role = 'admin', plan = '', daily_limit = 0 WHERE username = ?",
+      "UPDATE users SET role = 'admin', plan = '', daily_limit = 0 WHERE email = ?",
     )
-    .run(process.env.ADMIN_USERNAME.trim());
+    .run(adminEmail);
 }

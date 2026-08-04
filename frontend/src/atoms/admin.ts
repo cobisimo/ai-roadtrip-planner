@@ -14,7 +14,7 @@ export type AdminStats = {
 
 export type AdminUser = {
   id: number;
-  username: string;
+  email: string;
   role: 'user' | 'admin';
   plan: 'free' | 'paid_10' | 'paid_50' | 'paid_100' | null;
   dailyLimit: number;

@@ -6,18 +6,18 @@ import { useAtom } from 'jotai';
 export const tokenAtom = atomWithStorage<string | null>('token', null);
 
 type LoginCredentials = {
-  username: string;
+  email: string;
   password: string;
 };
 
 type RegisterCredentials = LoginCredentials;
 
 type ForgotPasswordPayload = {
-  username: string;
+  email: string;
 };
 
 type ResetPasswordPayload = {
-  username: string;
+  email: string;
   token: string;
   newPassword: string;
 };
@@ -26,7 +26,7 @@ export const AUTH_API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:30
 
 export type CurrentUser = {
   userId: number;
-  username: string;
+  email: string;
   role: 'user' | 'admin';
   plan: 'free' | 'paid_10' | 'paid_50' | 'paid_100' | null;
   dailyLimit: number;

@@ -13,7 +13,7 @@ export const USER_PLANS = ["free", "paid_10", "paid_50", "paid_100"] as const;
 
 export type AuthenticatedUser = {
   userId: number;
-  username: string;
+  email: string;
   role: UserRole;
   plan: UserPlan;
   dailyLimit: number;
@@ -27,12 +27,12 @@ export const getPlanLimit = (plan: UserPlan) =>
 export const getUserById = (userId: number): AuthenticatedUser | undefined => {
   const user = sqlite
     .prepare(
-      "SELECT id, username, role, plan, daily_limit, usage_date, usage_count FROM users WHERE id = ?",
+      "SELECT id, email, role, plan, daily_limit, usage_date, usage_count FROM users WHERE id = ?",
     )
     .get(userId) as
     | {
         id: number;
-        username: string;
+        email: string;
         role: string;
         plan: string;
         daily_limit: number;
@@ -47,7 +47,7 @@ export const getUserById = (userId: number): AuthenticatedUser | undefined => {
 
   return {
     userId: user.id,
-    username: user.username,
+    email: user.email,
     role,
     plan,
     dailyLimit: getPlanLimit(plan),

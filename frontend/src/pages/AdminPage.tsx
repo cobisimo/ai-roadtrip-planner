@@ -76,7 +76,7 @@ export function AdminPage() {
 
     try {
       await updateUser({ userId: user.id, ...draft });
-      notifications.show({ title: 'Корисник је ажуриран', message: `Подаци за ${user.username} су ажурирани.`, color: 'green' });
+      notifications.show({ title: 'Корисник је ажуриран', message: `Подаци за ${user.email} су ажурирани.`, color: 'green' });
       setEditModalOpened(false);
     } catch (saveError) {
       notifications.show({ title: 'Ажурирање није успело', message: getErrorMessage(saveError), color: 'red' });
@@ -156,7 +156,7 @@ export function AdminPage() {
                       return (
                         <Table.Tr key={user.id}>
                           <Table.Td>
-                            <Text fw={600}>{user.username}</Text>
+                            <Text fw={600}>{user.email}</Text>
                             <Text size="xs" c="dimmed">ID {user.id}</Text>
                           </Table.Td>
                           <Table.Td><Badge variant="light">{draft.role}</Badge></Table.Td>
@@ -167,7 +167,7 @@ export function AdminPage() {
                           <Table.Td>
                             <Menu position="bottom-end" withArrow>
                               <Menu.Target>
-                                <ActionIcon variant="subtle" aria-label={`Actions for ${user.username}`}>
+                                <ActionIcon variant="subtle" aria-label={`Actions for ${user.email}`}>
                                   <IconDotsVertical size={18} />
                                 </ActionIcon>
                               </Menu.Target>
@@ -192,7 +192,7 @@ export function AdminPage() {
       <Modal
         opened={editModalOpened}
         onClose={() => setEditModalOpened(false)}
-        title={editingUser ? `Уређивање приступа: ${editingUser.username}` : 'Уређивање приступа'}
+                        title={editingUser ? `Уређивање приступа: ${editingUser.email}` : 'Уређивање приступа'}
         centered
       >
         {editingUser && editingDraft && (

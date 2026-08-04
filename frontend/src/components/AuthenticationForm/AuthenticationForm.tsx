@@ -19,7 +19,7 @@ import classes from './AuthenticationForm.module.css';
 type AuthMode = 'login' | 'register' | 'forgot' | 'reset';
 
 type AuthFormValues = {
-  username: string;
+  email: string;
   password: string;
   confirmPassword: string;
   token: string;
@@ -28,7 +28,7 @@ type AuthFormValues = {
 const authCopy: Record<AuthMode, { title: string; description: string; submitLabel: string }> = {
   login: {
     title: 'Пријава',
-    description: 'Унесите корисничко име и лозинку да бисте наставили.',
+    description: 'Унесите имејл адресу и лозинку да бисте наставили.',
     submitLabel: 'Пријави се',
   },
   register: {
@@ -38,7 +38,7 @@ const authCopy: Record<AuthMode, { title: string; description: string; submitLab
   },
   forgot: {
     title: 'Заборављена лозинка',
-    description: 'Послаћемо захтев за ресетовање лозинке за унето корисничко име.',
+    description: 'Послаћемо захтев за ресетовање лозинке за унету имејл адресу.',
     submitLabel: 'Пошаљи захтев',
   },
   reset: {
@@ -62,13 +62,13 @@ export function AuthenticationForm() {
   const [mode, setMode] = useState<AuthMode>('login');
   const form = useForm({
     initialValues: {
-      username: '',
+      email: '',
       password: '',
       confirmPassword: '',
       token: '',
     },
     validate: {
-      username: (value) => (value.trim().length === 0 ? 'Корисничко име је обавезно.' : null),
+      email: (value) => (value.trim().length === 0 ? 'Имејл адреса је обавезна.' : null),
       password: (value) => {
         if (mode === 'forgot') {
           return null;
@@ -108,12 +108,12 @@ export function AuthenticationForm() {
   };
 
   const handleSubmit = form.onSubmit(async (values: AuthFormValues) => {
-    const username = values.username.trim();
+    const email = values.email.trim();
 
     try {
       if (mode === 'login') {
         await login({
-          username,
+          email,
           password: values.password,
         });
         notifications.show({
@@ -127,7 +127,7 @@ export function AuthenticationForm() {
 
       if (mode === 'register') {
         await register({
-          username,
+          email,
           password: values.password,
         });
         notifications.show({
@@ -140,7 +140,7 @@ export function AuthenticationForm() {
       }
 
       if (mode === 'forgot') {
-        await forgotPassword({ username });
+        await forgotPassword({ email });
         notifications.show({
           title: 'Захтев је послат',
           message: 'У развојном окружењу ресет токен проверите у бекенд конзоли.',
@@ -151,7 +151,7 @@ export function AuthenticationForm() {
       }
 
       await resetPassword({
-        username,
+        email,
         token: values.token.trim(),
         newPassword: values.password,
       });
@@ -188,12 +188,13 @@ export function AuthenticationForm() {
         <Stack gap="md">
           <TextInput
             required
-            label="Корисничко име"
-            placeholder="нпр. test_putnik"
-            value={form.values.username}
-            onChange={(event) => form.setFieldValue('username', event.currentTarget.value)}
-            error={form.errors.username}
-            autoComplete="username"
+            label="Имејл адреса"
+            placeholder="нпр. free@example.com"
+            value={form.values.email}
+            onChange={(event) => form.setFieldValue('email', event.currentTarget.value)}
+            error={form.errors.email}
+            type="email"
+            autoComplete="email"
             radius="md"
             size="md"
           />

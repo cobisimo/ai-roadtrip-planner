@@ -94,7 +94,7 @@ const getPlanLimit = (plan: UserPlan) =>
 
 type AuthenticatedUser = {
   userId: number;
-  username: string;
+  email: string;
   role: UserRole;
   plan: UserPlan;
   dailyLimit: number;
@@ -327,12 +327,12 @@ const enrichStopsWithImages = async (
 const getUserById = (userId: number): AuthenticatedUser | undefined => {
   const user = sqlite
     .prepare(
-      "SELECT id, username, role, plan, daily_limit, usage_date, usage_count FROM users WHERE id = ?",
+      "SELECT id, email, role, plan, daily_limit, usage_date, usage_count FROM users WHERE id = ?",
     )
     .get(userId) as
     | {
         id: number;
-        username: string;
+        email: string;
         role: string;
         plan: string;
         daily_limit: number;
@@ -348,7 +348,7 @@ const getUserById = (userId: number): AuthenticatedUser | undefined => {
 
   return {
     userId: user.id,
-    username: user.username,
+    email: user.email,
     role,
     plan,
     dailyLimit: getPlanLimit(plan),
@@ -498,12 +498,12 @@ app.get("/api/auth/google/callback", async (req, res) => {
 
     let user = sqlite
       .prepare("SELECT * FROM users WHERE google_id = ?")
-      .get(payload.sub) as { id: number; username: string } | undefined;
+      .get(payload.sub) as { id: number; email: string } | undefined;
 
     if (!user) {
       user = sqlite
-        .prepare("SELECT * FROM users WHERE username = ?")
-        .get(payload.email) as { id: number; username: string } | undefined;
+        .prepare("SELECT * FROM users WHERE email = ?")
+        .get(payload.email) as { id: number; email: string } | undefined;
       if (user) {
         sqlite
           .prepare("UPDATE users SET google_id = ? WHERE id = ?")
@@ -515,14 +515,14 @@ app.get("/api/auth/google/callback", async (req, res) => {
       const password = await bcrypt.hash(randomBytes(32).toString("hex"), 10);
       const result = sqlite
         .prepare(
-          "INSERT INTO users (username, password, google_id, created_at) VALUES (?, ?, ?, ?)",
+          "INSERT INTO users (email, password, google_id, created_at) VALUES (?, ?, ?, ?)",
         )
         .run(payload.email, password, payload.sub, Date.now());
-      user = { id: Number(result.lastInsertRowid), username: payload.email };
+      user = { id: Number(result.lastInsertRowid), email: payload.email };
     }
 
     const token = jwt.sign(
-      { userId: user.id, username: user.username },
+      { userId: user.id, email: user.email },
       JWT_SECRET,
       { expiresIn: "7d" },
     );
@@ -599,7 +599,7 @@ app.get("/api/admin/users", auth, adminOnly, (req, res) => {
       `
     SELECT
       users.id,
-      users.username,
+      users.email,
       users.role,
       users.plan,
       users.daily_limit,
@@ -618,7 +618,7 @@ app.get("/api/admin/users", auth, adminOnly, (req, res) => {
   res.json(
     users.map((user) => ({
       id: Number(user.id),
-      username: String(user.username),
+      email: String(user.email),
       role: String(user.role),
       plan: user.role === "admin" ? null : String(user.plan),
       dailyLimit: getPlanLimit(
