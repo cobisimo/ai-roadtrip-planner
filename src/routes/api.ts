@@ -76,6 +76,59 @@ type RouteData = {
   stops: RouteStop[];
 };
 
+const removeTrailingJsonCommas = (value: string) => {
+  let result = "";
+  let inString = false;
+  let escaped = false;
+
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index];
+
+    if (inString) {
+      result += character;
+      if (escaped) {
+        escaped = false;
+      } else if (character === "\\") {
+        escaped = true;
+      } else if (character === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (character === '"') {
+      inString = true;
+      result += character;
+      continue;
+    }
+
+    if (character === ",") {
+      let nextIndex = index + 1;
+      while (/\s/.test(value[nextIndex] ?? "")) nextIndex += 1;
+      if (value[nextIndex] === "}" || value[nextIndex] === "]") continue;
+    }
+
+    result += character;
+  }
+
+  return result;
+};
+
+const parseRouteData = (content: string): RouteData => {
+  let normalized = content.trim();
+
+  // Some providers still wrap JSON in Markdown despite response_format.
+  normalized = normalized.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
+
+  const firstObject = normalized.indexOf("{");
+  const lastObject = normalized.lastIndexOf("}");
+  if (firstObject >= 0 && lastObject > firstObject) {
+    normalized = normalized.slice(firstObject, lastObject + 1);
+  }
+
+  return JSON.parse(removeTrailingJsonCommas(normalized)) as RouteData;
+};
+
 type UserRole = "user" | "admin";
 type UserPlan = "free" | "paid_10" | "paid_50" | "paid_100" | "none";
 
@@ -775,9 +828,7 @@ app.post("/api/generate", auth, nonAdminOnly, async (req: any, res) => {
     let routeData: RouteData;
 
     try {
-      routeData = JSON.parse(
-        completion.choices[0].message.content || "{}",
-      ) as RouteData;
+      routeData = parseRouteData(completion.choices[0].message.content || "{}");
     } catch (error) {
       console.error("Error parsing route data:", error);
       console.log(completion);
