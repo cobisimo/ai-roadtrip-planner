@@ -130,6 +130,8 @@ export function PromptPage() {
         onClose={() => setUpgradeModalOpened(false)}
         title="Промена плана"
         centered
+        closeOnClickOutside={false}
+        closeOnEscape={false}
       >
         <Stack>
           <Text size="sm" c="dimmed">

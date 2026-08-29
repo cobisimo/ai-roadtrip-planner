@@ -8,6 +8,8 @@ import {
   Image,
   Modal,
   NativeSelect,
+  useComputedColorScheme,
+  useMantineColorScheme,
 } from '@mantine/core';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
@@ -19,7 +21,7 @@ import { useAtom } from 'jotai';
 import { type UserPlan, tokenAtom, useCurrentUser, useUpgradePlan } from '../../../atoms/auth';
 import { activeRouteAtom, routeCoordinatesAtom, useRoutes } from '../../../atoms/routes';
 import { MapZoomToRoute } from '../../../components/MapZoomToRoute';
-import { useColorScheme, useDisclosure } from '@mantine/hooks';
+import { useDisclosure } from '@mantine/hooks';
 import flagIconSvg from '../../../assets/flag.svg?raw';
 import logoImg from '../../../assets/logo.png';
 import logoImgDark from '../../../assets/logo-dark.png';
@@ -37,8 +39,8 @@ export function MapPage() {
   const [activeRoute, setActiveRoute] = useAtom(activeRouteAtom);
   const [routeCoordinates] = useAtom(routeCoordinatesAtom);
   const [activeRouteId, setActiveRouteId] = useState<string | null>(null);
-  const preferredColorScheme = useColorScheme();
-  const [colorScheme, setColorScheme] = useState(preferredColorScheme);
+  const preferredColorScheme = useComputedColorScheme('light', { getInitialValueInEffect: true });
+  const { setColorScheme } = useMantineColorScheme();
   const [opened, { toggle, close }] = useDisclosure();
   const {
     routes,
@@ -80,10 +82,6 @@ export function MapPage() {
       notifications.show({ title: 'Промена плана није успела', message: error instanceof Error ? error.message : 'Покушајте поново.', color: 'red' });
     }
   };
-
-  useEffect(() => {
-    setColorScheme(preferredColorScheme);
-  }, [preferredColorScheme]);
 
   useEffect(() => {
     if (!isLoadingRoutes && routes && routes.length === 0 && !activeRoute) {
@@ -242,6 +240,8 @@ export function MapPage() {
         title="Промена плана"
         centered
         zIndex={2000}
+        closeOnClickOutside={false}
+        closeOnEscape={false}
       >
         <Stack>
           <Text size="sm" c="dimmed">
@@ -266,7 +266,7 @@ export function MapPage() {
           zoom={activeRoute ? 6 : 7}
         >
           <TileLayer
-            url={colorScheme === 'dark' ? "https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png" : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"}
+            url={preferredColorScheme === 'dark' ? "https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png" : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"}
             attribution="&copy; OpenStreetMap contributors"
           />
           {activeRoute && (<>
@@ -299,13 +299,13 @@ export function MapPage() {
 
         <Affix position={{ top: 20, right: 20 }} zIndex={1000}>
           <ActionIcon
-            onClick={() => setColorScheme(colorScheme === 'dark' ? 'light' : 'dark')}
+            onClick={() => setColorScheme(preferredColorScheme === 'dark' ? 'light' : 'dark')}
             variant="default"
             radius="xl"
             size={60}
             aria-label="Промени тему"
           >
-            {colorScheme === 'dark' ? <IconSun stroke={1.5} size={30} /> : <IconMoon stroke={1.5} size={30} />}
+            {preferredColorScheme === 'dark' ? <IconSun stroke={1.5} size={30} /> : <IconMoon stroke={1.5} size={30} />}
           </ActionIcon>
         </Affix>
         <Affix position={{ bottom: 20, right: 20 }} zIndex={1000}>
