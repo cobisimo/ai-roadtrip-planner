@@ -1,10 +1,12 @@
 import { Affix, Burger, Button, Container, Modal, Paper, Progress, Select, Stack, Text } from '@mantine/core';
 import { SimpleInput } from '../../components/SimpleInput/SimpleInput';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { notifications } from '@mantine/notifications';
 import { GenerationLimitError, type GenerationProgress, useRoutes } from '../../atoms/routes';
+import { activeRouteAtom, activeRouteIdAtom } from '../../atoms/routes';
 import { type UserPlan, useCurrentUser, useUpgradePlan } from '../../atoms/auth';
 import { useState } from 'react';
+import { useAtom } from 'jotai';
 
 const planOptions: Array<{ value: UserPlan; label: string; limit: number }> = [
   { value: 'free', label: 'Бесплатни · 3 дневно', limit: 3 },
@@ -15,7 +17,10 @@ const planOptions: Array<{ value: UserPlan; label: string; limit: number }> = [
 
 export function PromptPage() {
   const navigate = useNavigate();
+  const { search } = useLocation();
   const { data: currentUser } = useCurrentUser();
+  const [activeRoute] = useAtom(activeRouteAtom);
+  const [activeRouteId] = useAtom(activeRouteIdAtom);
   const { upgradePlan, isUpgrading } = useUpgradePlan();
   const [prompt, setPrompt] = useState('');
   const [generationProgress, setGenerationProgress] = useState<GenerationProgress[]>([]);
@@ -24,8 +29,10 @@ export function PromptPage() {
   const [selectedPlan, setSelectedPlan] = useState<UserPlan | null>(null);
   const {
     createRoute,
+    editRoute,
     isCreatingRoute,
   } = useRoutes();
+  const isEditingRoute = Boolean(new URLSearchParams(search).get('edit') === '1' && activeRoute && activeRouteId !== null);
 
   const handleGenerate = async () => {
     if (!prompt.trim() || isCreatingRoute) return;
@@ -34,10 +41,16 @@ export function PromptPage() {
     setGenerationError(null);
 
     try {
-      await createRoute(prompt, (progress) => {
+      const onProgress = (progress: GenerationProgress) => {
         setGenerationProgress((current) => [...current, progress]);
-      });
-      notifications.show({ title: 'Успех!', message: 'Путовање је испланирано.', color: 'green' });
+      };
+      if (isEditingRoute && activeRouteId !== null) {
+        await editRoute(activeRouteId, prompt, onProgress);
+        notifications.show({ title: 'Рута је измењена', message: 'Додатни захтев је примењен на руту.', color: 'green' });
+      } else {
+        await createRoute(prompt, onProgress);
+        notifications.show({ title: 'Успех!', message: 'Путовање је испланирано.', color: 'green' });
+      }
       navigate('/map')
     } catch (e) {
       console.error(e);
@@ -108,7 +121,7 @@ export function PromptPage() {
           <Paper withBorder p="md" radius="lg">
             <Stack gap="sm">
               <Text fw={600} c={generationError ? 'red' : undefined}>
-                {generationError ? 'Генерисање није успело' : isCreatingRoute ? 'Генерисање путовања' : 'Генерисање завршено'}
+                {generationError ? 'Обрада није успела' : isCreatingRoute ? (isEditingRoute ? 'Измена руте' : 'Генерисање путовања') : 'Обрада завршена'}
               </Text>
               <Progress value={progressPercent} animated={isCreatingRoute} />
               {latestProgress && <Text size="sm">{latestProgress.message}</Text>}

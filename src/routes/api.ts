@@ -5,7 +5,7 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import { randomBytes } from "node:crypto";
 import * as schema from "../db/schema.js";
-import { eq, desc } from "drizzle-orm";
+import { and, eq, desc } from "drizzle-orm";
 import axios from "axios";
 import { OAuth2Client } from "google-auth-library";
 import { db, sqlite } from "../db/client.js";
@@ -755,6 +755,93 @@ const fetchRoute = async (
   }
 };
 
+type PreparedRoute = {
+  routeData: RouteData;
+  stops: RouteStop[];
+  routeCoordinates: [number, number][] | null;
+};
+
+const getErrorStatus = (error: unknown) => {
+  if (!error || typeof error !== "object" || !("status" in error)) return undefined;
+  const status = (error as { status?: unknown }).status;
+  return typeof status === "number" ? status : undefined;
+};
+
+const prepareRoute = async (
+  prompt: string,
+  report: ProgressReporter,
+  existingRoute?: { title: string; data: string },
+): Promise<PreparedRoute> => {
+  report({
+    step: existingRoute ? "edit_started" : "started",
+    message: existingRoute ? "Припремам измену постојеће руте." : "Покрећем планирање путовања.",
+    percent: 0,
+  });
+  report({
+    step: "ai_started",
+    message: existingRoute ? "AI агент обрађује ваш додатни захтев." : "AI агент осмишљава руту.",
+    percent: 10,
+  });
+
+  const context = existingRoute
+    ? `Постојећа рута:\n${JSON.stringify({ title: existingRoute.title, stops: JSON.parse(existingRoute.data) })}\n\nДодатни захтев корисника:\n${prompt}`
+    : prompt;
+  const messages = [
+    {
+      role: "system" as const,
+      content: existingRoute
+        ? "Ти си стручњак за измену путних рута. Врати ИСКЉУЧИВО валидан JSON објекат са пољима title и stops. Задржи корисне постојеће локације, али измени, додај или уклони стајалишта у складу са додатним захтевом. Стајалишта морају имати place, city, lat, lng, description и reason. Врати 4 до 6 логично повезаних стајалишта. Опис и разлог посете напиши на српском језику у најмање 3 реченице."
+        : 'Ти си искусни стручњак за планирање путовања. На основу корисничког упита креирај логичну, реалну и географски повезану руту са 4 до 6 стајалишта. Стајалишта морају имати place, city, lat, lng, description и reason. Одговори ИСКЉУЧИВО у валидном JSON формату са пољима title и stops. Опис и разлог посете напиши на српском језику у најмање 3 реченице.',
+    },
+    { role: "user" as const, content: context },
+  ];
+  let completion;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      completion = await client.chat.completions.create({
+        messages,
+        model: "gemini-3-flash-preview",
+        response_format: { type: "json_object" },
+      });
+      break;
+    } catch (error) {
+      const status = getErrorStatus(error);
+      if ((status !== 503 && status !== 429) || attempt === 3) {
+        if (status === 503) throw new Error("AI сервис је тренутно недоступан. Покушајте поново.");
+        throw error;
+      }
+      const delay = attempt * 1500;
+      report({ step: "ai_retry", message: `AI сервис је привремено недоступан. Поновни покушај за ${Math.round(delay / 1000)} секунде.`, percent: 10 });
+      await wait(delay);
+    }
+  }
+  if (!completion) throw new Error("AI сервис није вратио одговор. Покушајте поново.");
+  report({ step: "ai_completed", message: "AI агент је направио предлог руте.", percent: 35 });
+
+  let routeData: RouteData;
+  try {
+    routeData = parseRouteData(completion.choices[0].message.content || "{}");
+  } catch (error) {
+    console.error("Error parsing route data:", error);
+    throw new Error("AI није вратио исправан формат руте.");
+  }
+  if (!routeData.title || !Array.isArray(routeData.stops)) {
+    throw new Error("AI није вратио валидне податке о рути.");
+  }
+
+  report({ step: "geocoding_started", message: `Проверавам координате за ${routeData.stops.length} стајалишта.`, percent: 35 });
+  const geocodedStops = await geocodeStops(routeData.stops, (event) => report({ ...event, percent: event.percent === undefined ? 35 : 35 + Math.round(event.percent * 0.1) }));
+  report({ step: "geocoding_completed", message: "Координате су проверене преко Nominatim-а.", percent: 45 });
+  report({ step: "images_started", message: `Обогаћујем ${geocodedStops.length} стајалишта сликама.`, percent: 50 });
+  const stops = await enrichStopsWithImages(geocodedStops, (event) => report({ ...event, percent: event.percent === undefined ? 50 : 50 + Math.round(event.percent * 0.3) }));
+  report({ step: "images_completed", message: "Обогаћивање сликама је завршено.", percent: 80 });
+  report({ step: "route_started", message: "Израчунавам путну трасу.", percent: 85 });
+  const routeCoordinates = await fetchRoute(stops.map((stop) => `${stop.lng},${stop.lat}`));
+  report({ step: routeCoordinates ? "route_completed" : "route_warning", message: routeCoordinates ? "Путна траса је израчуната." : "Путна траса није доступна, али рута може бити сачувана.", percent: 90 });
+
+  return { routeData, stops, routeCoordinates };
+};
+
 app.post("/api/login", login);
 app.post("/api/register", register);
 app.post("/api/forgot-password", forgotPassword);
@@ -792,114 +879,7 @@ app.post("/api/generate", auth, nonAdminOnly, async (req: any, res) => {
   };
 
   try {
-    sendProgress({
-      step: "started",
-      message:
-        quota.limit === null
-          ? "Покрећем планирање путовања."
-          : `Покрећем планирање путовања. Преостало захтева данас: ${quota.remaining}.`,
-      percent: 0,
-    });
-    sendProgress({
-      step: "ai_started",
-      message: "AI агент осмишљава руту.",
-      percent: 10,
-    });
-
-    const completion = await client.chat.completions.create({
-      messages: [
-        {
-          role: "system",
-          content:
-            'Ти си искусни стручњак за планирање путовања (Road Trip Planner). Твој задатак је да на основу корисничког упита креираш логичну, реалну и географски повезану руту са 4 до 6 стајалишта.\n\nПРАВИЛА ЗА ГЕНЕРИСАЊЕ СТАЈАЛИШТА:\n1. Редослед: Стајалишта морају бити уређена логичким редоследом за вожњу.\n2. Назив (place): Наведи тачан и званичан назив локације или знаменитости (нпр. \'Манастир Манасија\', а не само \'Манастир\').\n3. Град (city): Наведи најближи већи град или општину којој место припада.\n4. Координате (lat, lng): Наведи што прецизније географске координате.\n5. Опис (description): Детаљно опиши место у барем 3 реченице. Опис мора да обухвати: шта је то место, његов историјски или природни значај и шта корисник ту може да види.\n6. Разлог посете (reason): У барем 3 реченице објасни зашто је ово место изабрано БАШ за овај конкретан кориснички упит. Немој понављати информације из описа, већ се фокусирај на доживљај и специфичну жељу корисника.\n\nФОРМАТ ИЗЛАЗА:\nОдговори ИСКЉУЧИВО у валидном JSON формату. Немој додавати никакав уводни ни закључни текст, нити Markdown ознаке (попут ```json).\n\nШема JSON објекта:\n{\n  "title": "Креативан назив целог путовања",\n  "description": "Кратак преглед целе руте у 2 реченице",\n  "stops": [\n    {\n      "place": "Назив места",\n      "city": "Најближи град",\n      "lat": 44.1234,\n      "lng": 20.5678,\n      "description": "Опис од најмање 3 детаљне реченице...",\n      "reason": "Разлог посете од најмање 3 детаљне реченице..."\n    }\n  ]\n}',
-        },
-        { role: "user", content: req.body.prompt },
-      ],
-      // model: "mistral-small-latest",
-      model: "gemini-3-flash-preview",
-      response_format: { type: "json_object" },
-    });
-    sendProgress({
-      step: "ai_completed",
-      message: "AI агент је направио предлог руте.",
-      percent: 35,
-    });
-
-    let routeData: RouteData;
-
-    try {
-      routeData = parseRouteData(completion.choices[0].message.content || "{}");
-    } catch (error) {
-      console.error("Error parsing route data:", error);
-      console.log(completion);
-      throw new Error("AI није вратио исправан формат руте.");
-    }
-
-    if (!routeData.title || !Array.isArray(routeData.stops)) {
-      throw new Error("AI није вратио валидне податке о рути.");
-    }
-
-    const generatedStops = routeData.stops;
-    sendProgress({
-      step: "geocoding_started",
-      message: `Проверавам координате за ${generatedStops.length} стајалишта.`,
-      percent: 35,
-    });
-    const geocodedStops = await geocodeStops(generatedStops, (event) => {
-      sendProgress({
-        ...event,
-        percent:
-          event.percent === undefined
-            ? 35
-            : 35 + Math.round(event.percent * 0.1),
-      });
-    });
-    sendProgress({
-      step: "geocoding_completed",
-      message: "Координате су проверене преко Nominatim-а.",
-      percent: 45,
-    });
-
-    sendProgress({
-      step: "images_started",
-      message: `Обогаћујем ${geocodedStops.length} стајалишта сликама.`,
-      percent: 50,
-    });
-    const stops = await enrichStopsWithImages(geocodedStops, (event) => {
-      sendProgress({
-        ...event,
-        percent:
-          event.percent === undefined
-            ? 50
-            : 50 + Math.round(event.percent * 0.3),
-      });
-    });
-    sendProgress({
-      step: "images_completed",
-      message: "Обогаћивање сликама је завршено.",
-      percent: 80,
-    });
-
-    sendProgress({
-      step: "route_started",
-      message: "Израчунавам путну трасу.",
-      percent: 85,
-    });
-    const waypoints = stops.map((stop) => `${stop.lng},${stop.lat}`);
-    const routeCoordinates = await fetchRoute(waypoints);
-    if (!routeCoordinates) {
-      sendProgress({
-        step: "route_warning",
-        message: "Путна траса није доступна, али рута може бити сачувана.",
-        percent: 90,
-      });
-    } else {
-      sendProgress({
-        step: "route_completed",
-        message: "Путна траса је израчуната.",
-        percent: 90,
-      });
-    }
+    const { routeData, stops, routeCoordinates } = await prepareRoute(req.body.prompt, sendProgress);
 
     sendProgress({
       step: "saving_started",
@@ -975,6 +955,56 @@ app.get("/api/routes/:id", auth, nonAdminOnly, async (req: any, res) => {
   } catch (error) {
     console.error("Error fetching route details:", error);
     res.status(500).json({ error: "Интерна грешка сервера." });
+  }
+});
+
+app.put("/api/routes/:id", auth, nonAdminOnly, async (req: any, res) => {
+  if (typeof req.body.prompt !== "string" || !req.body.prompt.trim()) {
+    return res.status(400).json({ error: "Додатни захтев је обавезан." });
+  }
+
+  const routeId = Number(req.params.id);
+  if (!Number.isInteger(routeId)) return res.status(400).json({ error: "Неважећи идентификатор руте." });
+  const existingRoutes = await db
+    .select()
+    .from(schema.routes)
+    .where(and(eq(schema.routes.id, routeId), eq(schema.routes.userId, req.user.userId)))
+    .limit(1);
+  const existingRoute = existingRoutes[0];
+  if (!existingRoute) return res.status(404).json({ error: "Рута није пронађена." });
+
+  const quota = consumeGenerationQuota(req.user.userId);
+  if (!quota.allowed) {
+    return res.status(429).json({ error: quota.reason, remaining: quota.remaining, limit: quota.limit, resetAt: quota.resetAt });
+  }
+
+  res.status(200);
+  res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+
+  const sendEvent = (event: GenerationEvent) => {
+    if (res.writableEnded || res.destroyed) return;
+    res.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+  };
+  const sendProgress = (event: Omit<GenerationEvent, "type">) => sendEvent({ type: "progress", ...event });
+
+  try {
+    const { routeData, stops, routeCoordinates } = await prepareRoute(req.body.prompt, sendProgress, existingRoute);
+    sendProgress({ step: "saving_started", message: "Чувам измене руте.", percent: 95 });
+
+    const updated = await db.update(schema.routes)
+      .set({ title: routeData.title, destination: `${existingRoute.destination}\n\n${req.body.prompt}`, data: JSON.stringify(stops), path: JSON.stringify((routeCoordinates ?? []).map((coord) => [coord[1], coord[0]])) })
+      .where(and(eq(schema.routes.id, routeId), eq(schema.routes.userId, req.user.userId)))
+      .returning();
+    sendEvent({ type: "complete", step: "completed", message: "Рута је успешно измењена.", percent: 100, route: updated[0] });
+  } catch (error) {
+    console.error("Error editing route:", error);
+    sendEvent({ type: "error", step: "failed", message: error instanceof Error ? error.message : "Измена руте није успела." });
+  } finally {
+    res.end();
   }
 });
 

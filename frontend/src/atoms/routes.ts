@@ -44,6 +44,7 @@ export class GenerationLimitError extends Error {
 export const routesAtom = atom<SavedRoute[]>([]);
 export const activeRouteAtom = atom<RouteStop[] | null>(null);
 export const routeCoordinatesAtom = atom<RouteCoordinate[] | null>(null);
+export const activeRouteIdAtom = atom<number | null>(null);
 
 const parseStops = (value: string) => JSON.parse(value) as RouteStop[];
 const parsePath = (value: string) => JSON.parse(value) as RouteCoordinate[];
@@ -53,6 +54,7 @@ export function useRoutes() {
   const [, setRoutes] = useAtom(routesAtom);
   const [, setActiveRoute] = useAtom(activeRouteAtom);
   const [, setRouteCoordinates] = useAtom(routeCoordinatesAtom);
+  const [, setActiveRouteId] = useAtom(activeRouteIdAtom);
   const queryClient = useQueryClient();
 
   const fetchWithAuth = async <T>(url: string, options: RequestInit = {}) => {
@@ -84,13 +86,14 @@ export function useRoutes() {
 
   type GenerateRouteInput = {
     prompt: string;
+    routeId?: number;
     onProgress?: (progress: GenerationProgress) => void;
   };
 
   const createRouteMutation = useMutation({
-    mutationFn: async ({ prompt, onProgress }: GenerateRouteInput) => {
-      const response = await fetch(`http://localhost:3000/api/generate`, {
-        method: 'POST',
+    mutationFn: async ({ prompt, routeId, onProgress }: GenerateRouteInput) => {
+      const response = await fetch(`http://localhost:3000/api${routeId ? `/routes/${routeId}` : '/generate'}`, {
+        method: routeId ? 'PUT' : 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
@@ -194,6 +197,7 @@ export function useRoutes() {
       const path = parsePath(data.path);
       setActiveRoute(stops);
       setRouteCoordinates(path);
+      setActiveRouteId(data.id);
       queryClient.invalidateQueries({ queryKey: ['routes'] });
     },
   });
@@ -219,6 +223,7 @@ export function useRoutes() {
       const path = parsePath(data.path);
       setActiveRoute(stops);
       setRouteCoordinates(path);
+      setActiveRouteId(data.id);
     },
   });
 
@@ -227,6 +232,8 @@ export function useRoutes() {
     isLoadingRoutes,
     createRoute: (prompt: string, onProgress?: (progress: GenerationProgress) => void) =>
       createRouteMutation.mutateAsync({ prompt, onProgress }),
+    editRoute: (routeId: number, prompt: string, onProgress?: (progress: GenerationProgress) => void) =>
+      createRouteMutation.mutateAsync({ routeId, prompt, onProgress }),
     isCreatingRoute: createRouteMutation.isPending,
     deleteRoute: deleteRouteMutation.mutateAsync,
     isDeletingRoute: deleteRouteMutation.isPending,

@@ -13,13 +13,13 @@ import {
 } from '@mantine/core';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
-import { IconTrash, IconPlus, IconLogout, IconSun, IconMoon, IconArrowBackUp } from '@tabler/icons-react';
+import { IconTrash, IconPlus, IconLogout, IconSun, IconMoon, IconArrowBackUp, IconPencil } from '@tabler/icons-react';
 import L from 'leaflet';
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
 import { useNavigate } from 'react-router-dom';
 import { useAtom } from 'jotai';
 import { type UserPlan, tokenAtom, useCurrentUser, useUpgradePlan } from '../../../atoms/auth';
-import { activeRouteAtom, routeCoordinatesAtom, useRoutes } from '../../../atoms/routes';
+import { activeRouteAtom, activeRouteIdAtom, routeCoordinatesAtom, useRoutes } from '../../../atoms/routes';
 import { MapZoomToRoute } from '../../../components/MapZoomToRoute';
 import { useDisclosure } from '@mantine/hooks';
 import flagIconSvg from '../../../assets/flag.svg?raw';
@@ -38,7 +38,7 @@ export function MapPage() {
   const [, setToken] = useAtom(tokenAtom);
   const [activeRoute, setActiveRoute] = useAtom(activeRouteAtom);
   const [routeCoordinates] = useAtom(routeCoordinatesAtom);
-  const [activeRouteId, setActiveRouteId] = useState<string | null>(null);
+  const [activeRouteId, setActiveRouteId] = useAtom(activeRouteIdAtom);
   const preferredColorScheme = useComputedColorScheme('light', { getInitialValueInEffect: true });
   const { setColorScheme } = useMantineColorScheme();
   const [opened, { toggle, close }] = useDisclosure();
@@ -98,7 +98,7 @@ export function MapPage() {
 
   const selectRoute = async (routeId: number) => {
     try {
-      setActiveRouteId(routeId.toString());
+      setActiveRouteId(routeId);
       await getRouteDetails(routeId);
       close();
     } catch (error) {
@@ -113,6 +113,7 @@ export function MapPage() {
 
   const deselectRoute = async () => {
     setActiveRoute(null);
+    setActiveRouteId(null);
   };
 
   const handleLogout = async () => {
@@ -129,7 +130,7 @@ export function MapPage() {
       confirmProps: { color: 'red' },
       zIndex: 1000,
       onConfirm: () => {
-        deleteRoute(activeRouteId);
+        deleteRoute(activeRouteId.toString());
         setActiveRoute(null);
         setActiveRouteId(null);
       },
@@ -183,13 +184,35 @@ export function MapPage() {
           <Stack gap="xs">
             {activeRoute ?
               <>
-                <Group justify="space-between">
-                  <Button onClick={deselectRoute}>
+                <Group justify="space-between" gap="xs">
+                  <ActionIcon
+                    variant="light"
+                    aria-label="Назад на листу рута"
+                    title="Назад на листу рута"
+                    onClick={deselectRoute}
+                  >
                     <IconArrowBackUp size={16} />
-                  </Button>
-                  <Button color="red" onClick={openDeleteModal} loading={isDeletingRoute}>
-                    <IconTrash size={16} />
-                  </Button>
+                  </ActionIcon>
+                  <Group gap="xs">
+                    <ActionIcon
+                      variant="light"
+                      aria-label="Измени руту"
+                      title="Измени руту"
+                      onClick={() => navigate('/prompt?edit=1')}
+                    >
+                      <IconPencil size={16} />
+                    </ActionIcon>
+                    <ActionIcon
+                      variant="light"
+                      color="red"
+                      aria-label="Избриши руту"
+                      title="Избриши руту"
+                      onClick={openDeleteModal}
+                      loading={isDeletingRoute}
+                    >
+                      <IconTrash size={16} />
+                    </ActionIcon>
+                  </Group>
                 </Group>
                 <Accordion>
                   {
