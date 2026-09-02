@@ -10,6 +10,9 @@ export type RouteStop = {
   lng: number;
   description: string;
   reason: string;
+  ticketsRequired?: boolean;
+  ticketPrice?: string;
+  bookingAdvance?: string;
   image?: string;
 };
 
@@ -112,7 +115,10 @@ export function useRoutes() {
           // Keep the raw response when the server did not return JSON.
         }
         if (response.status === 429) {
-          throw new GenerationLimitError(message || 'Достигнут је дневни лимит захтева.', payload?.limit ?? null, payload?.resetAt ?? null);
+          throw new GenerationLimitError(payload?.error || 'AI лимит је тренутно достигнут. Сачекајте и покушајте поново.', payload?.limit ?? null, payload?.resetAt ?? null);
+        }
+        if (response.status === 503) {
+          throw new Error('AI сервис је тренутно недоступан. Покушајте поново.');
         }
         throw new Error(message || `Захтев није успео (статус ${response.status}).`);
       }

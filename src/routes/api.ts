@@ -68,6 +68,9 @@ type RouteStop = {
   lng: number;
   description: string;
   reason: string;
+  ticketsRequired?: boolean;
+  ticketPrice?: string;
+  bookingAdvance?: string;
   image?: string;
 };
 
@@ -762,9 +765,13 @@ type PreparedRoute = {
 };
 
 const getErrorStatus = (error: unknown) => {
-  if (!error || typeof error !== "object" || !("status" in error)) return undefined;
-  const status = (error as { status?: unknown }).status;
-  return typeof status === "number" ? status : undefined;
+  if (error && typeof error === "object" && "status" in error) {
+    const status = (error as { status?: unknown }).status;
+    if (typeof status === "number") return status;
+  }
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  const match = message.match(/\b(429|503)\b/);
+  return match ? Number(match[1]) : undefined;
 };
 
 const prepareRoute = async (
@@ -790,8 +797,8 @@ const prepareRoute = async (
     {
       role: "system" as const,
       content: existingRoute
-        ? "Ти си стручњак за измену путних рута. Врати ИСКЉУЧИВО валидан JSON објекат са пољима title и stops. Задржи корисне постојеће локације, али измени, додај или уклони стајалишта у складу са додатним захтевом. Стајалишта морају имати place, city, lat, lng, description и reason. Врати 4 до 6 логично повезаних стајалишта. Опис и разлог посете напиши на српском језику у најмање 3 реченице."
-        : 'Ти си искусни стручњак за планирање путовања. На основу корисничког упита креирај логичну, реалну и географски повезану руту са 4 до 6 стајалишта. Стајалишта морају имати place, city, lat, lng, description и reason. Одговори ИСКЉУЧИВО у валидном JSON формату са пољима title и stops. Опис и разлог посете напиши на српском језику у најмање 3 реченице.',
+          ? "Ти си стручњак за измену путних рута. Врати ИСКЉУЧИВО валидан JSON објекат са пољима title и stops. Задржи корисне постојеће локације, али измени, додај или уклони стајалишта у складу са додатним захтевом. Стајалишта морају имати place, city, lat, lng, description и reason. Ако су потребне улазнице, додај ticketsRequired као true, ticketPrice са ценом и валутом и bookingAdvance са тиме колико унапред треба купити/резервисати. Ако нису потребне, постави ticketsRequired на false и изостави остала поља. Врати 4 до 6 логично повезаних стајалишта. Опис и разлог посете напиши на српском језику у најмање 3 реченице."
+        : 'Ти си искусни стручњак за планирање путовања. На основу корисничког упита креирај логичну, реалну и географски повезану руту са 4 до 6 стајалишта. Стајалишта морају имати place, city, lat, lng, description и reason. Ако су потребне улазнице, додај ticketsRequired као true, ticketPrice са ценом и валутом и bookingAdvance са тиме колико унапред треба купити/резервисати. Ако нису потребне, постави ticketsRequired на false и изостави остала поља. Одговори ИСКЉУЧИВО у валидном JSON формату са пољима title и stops. Опис и разлог посете напиши на српском језику у најмање 3 реченице.',
     },
     { role: "user" as const, content: context },
   ];
@@ -808,6 +815,7 @@ const prepareRoute = async (
       const status = getErrorStatus(error);
       if ((status !== 503 && status !== 429) || attempt === 3) {
         if (status === 503) throw new Error("AI сервис је тренутно недоступан. Покушајте поново.");
+        if (status === 429) throw new Error("AI лимит је тренутно достигнут. Сачекајте и покушајте поново.");
         throw error;
       }
       const delay = attempt * 1500;

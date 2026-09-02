@@ -8,12 +8,13 @@ import {
   Image,
   Modal,
   NativeSelect,
+  Tooltip,
   useComputedColorScheme,
   useMantineColorScheme,
 } from '@mantine/core';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
-import { IconTrash, IconPlus, IconLogout, IconSun, IconMoon, IconArrowBackUp, IconPencil } from '@tabler/icons-react';
+import { IconTrash, IconPlus, IconLogout, IconSun, IconMoon, IconArrowBackUp, IconPencil, IconCurrencyDollar } from '@tabler/icons-react';
 import L from 'leaflet';
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
 import { useNavigate } from 'react-router-dom';
@@ -26,6 +27,7 @@ import flagIconSvg from '../../../assets/flag.svg?raw';
 import logoImg from '../../../assets/logo.png';
 import logoImgDark from '../../../assets/logo-dark.png';
 import { useEffect, useState } from 'react';
+import type { RouteStop } from '../../../atoms/routes';
 
 const planOptions: Array<{ value: UserPlan; label: string }> = [
   { value: 'free', label: 'Бесплатни · 3 дневно' },
@@ -33,6 +35,33 @@ const planOptions: Array<{ value: UserPlan; label: string }> = [
   { value: 'paid_50', label: 'Плаћени · 10 $ месечно · 50 дневно' },
   { value: 'paid_100', label: 'Плаћени · 25 $ месечно · 100 дневно' },
 ];
+
+function TicketInfo({ stop }: { stop: RouteStop }) {
+  if (!stop.ticketsRequired) return null;
+
+  const label = `Улазнице: ${stop.ticketPrice ?? 'цена није позната'}${stop.bookingAdvance ? ` · Резервисати ${stop.bookingAdvance}` : ''}`;
+
+  return (
+    <Tooltip
+      label={label}
+      multiline
+      maw={260}
+      withArrow
+      withinPortal
+      zIndex={5000}
+    >
+      <ActionIcon
+        size="sm"
+        variant="light"
+        color="orange"
+        aria-label="Информације о улазницама"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <IconCurrencyDollar size={15} />
+      </ActionIcon>
+    </Tooltip>
+  );
+}
 
 export function MapPage() {
   const [, setToken] = useAtom(tokenAtom);
@@ -214,11 +243,11 @@ export function MapPage() {
                     </ActionIcon>
                   </Group>
                 </Group>
-                <Accordion>
+                <Accordion chevronPosition="left">
                   {
                     activeRoute?.map(item => (
                       <Accordion.Item key={`${item.place}-${item.city ?? ''}`} value={`${item.place}-${item.city ?? ''}`}>
-                        <Accordion.Control>
+                        <Accordion.Control icon={<TicketInfo stop={item} />}>
                           {item.place}
                           {item.city && <Text component="span" size="sm" c="dimmed">{`, ${item.city}`}</Text>}
                         </Accordion.Control>
@@ -297,10 +326,13 @@ export function MapPage() {
               <Marker key={index} position={[stop.lat, stop.lng]} icon={customIcon}>
                 <Popup>
                   <div>
-                    <Text fw={600}>
-                      {stop.place}
-                      {stop.city && <Text component="span" size="sm" c="dimmed">{`, ${stop.city}`}</Text>}
-                    </Text>
+                    <Group gap={4} wrap="nowrap">
+                      <Text fw={600} component="span">
+                        {stop.place}
+                        {stop.city && <Text component="span" size="sm" c="dimmed">{`, ${stop.city}`}</Text>}
+                      </Text>
+                      <TicketInfo stop={stop} />
+                    </Group>
                     <Text size="sm">{stop.reason}</Text>
                     {stop.image && <img src={stop.image} alt={stop.place} style={{ width: '100%', marginTop: 8 }} />}
                   </div>
