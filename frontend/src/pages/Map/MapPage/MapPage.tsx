@@ -39,7 +39,7 @@ const planOptions: Array<{ value: UserPlan; label: string }> = [
 function TicketInfo({ stop }: { stop: RouteStop }) {
   if (!stop.ticketsRequired) return null;
 
-  const label = `Улазнице: ${stop.ticketPrice ?? 'цена није позната'}${stop.bookingAdvance ? ` · Резервисати ${stop.bookingAdvance}` : ''}`;
+  const label = `Улазнице: ${stop.ticketPrice ?? 'цена није позната'} ${stop.ticketCurrency ?? ''}${stop.bookingAdvance ? ` · Резервисати ${stop.bookingAdvance} унапред` : ''}`;
 
   return (
     <Tooltip
@@ -246,9 +246,9 @@ export function MapPage() {
                 <Accordion chevronPosition="left">
                   {
                     activeRoute?.map(item => (
-                      <Accordion.Item key={`${item.place}-${item.city ?? ''}`} value={`${item.place}-${item.city ?? ''}`}>
+                      <Accordion.Item key={`${item.name}-${item.city ?? ''}`} value={`${item.name}-${item.city ?? ''}`}>
                         <Accordion.Control icon={<TicketInfo stop={item} />}>
-                          {item.place}
+                          {item.name}
                           {item.city && <Text component="span" size="sm" c="dimmed">{`, ${item.city}`}</Text>}
                         </Accordion.Control>
                         <Accordion.Panel>
@@ -256,7 +256,7 @@ export function MapPage() {
                             {item.image && (
                               <Image
                                 src={item.image}
-                                alt={item.place}
+                                alt={item.name}
                                 radius="md"
                                 mah={180}
                                 fit="cover"
@@ -328,13 +328,13 @@ export function MapPage() {
                   <div>
                     <Group gap={4} wrap="nowrap">
                       <Text fw={600} component="span">
-                        {stop.place}
+                        {stop.name}
                         {stop.city && <Text component="span" size="sm" c="dimmed">{`, ${stop.city}`}</Text>}
                       </Text>
                       <TicketInfo stop={stop} />
                     </Group>
                     <Text size="sm">{stop.reason}</Text>
-                    {stop.image && <img src={stop.image} alt={stop.place} style={{ width: '100%', marginTop: 8 }} />}
+                    {stop.image && <img src={stop.image} alt={stop.name} style={{ width: '100%', marginTop: 8 }} />}
                   </div>
                 </Popup>
               </Marker>

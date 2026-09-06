@@ -12,6 +12,8 @@ import { db, sqlite } from "../db/client.js";
 import "../db/migrateUsers.js";
 import { adminOnly, auth, nonAdminOnly } from "../middleware/auth.js";
 import { forgotPassword, login, register, resetPassword } from "../controllers/auth.controller.js";
+import { RouteService, type ProgressReporter, type RouteStop } from "../services/route.service.js";
+import { USER_PLANS, userService, type UserPlan, type UserRole } from "../services/user.service.js";
 
 process.on("uncaughtException", (err) => {
   console.error("Критична грешка приликом покретања:", err);
@@ -42,121 +44,19 @@ const GOOGLE_STATE_COOKIE = "google_oauth_state";
 const googleOAuthClient =
   GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET
     ? new OAuth2Client({
-        clientId: GOOGLE_CLIENT_ID,
-        clientSecret: GOOGLE_CLIENT_SECRET,
-        redirectUri: GOOGLE_REDIRECT_URI,
-      })
+      clientId: GOOGLE_CLIENT_ID,
+      clientSecret: GOOGLE_CLIENT_SECRET,
+      redirectUri: GOOGLE_REDIRECT_URI,
+    })
     : null;
 
 app.use(cors());
 app.use(express.json());
 
-// const client = new OpenAI({
-//   baseURL: 'https://api.mistral.ai/v1',
-//   apiKey: process.env.MISTRAL_API_KEY,
-// });
-
 const client = new OpenAI({
-  baseURL: "https://generativelanguage.googleapis.com/v1beta/openai",
-  apiKey: process.env.GEMINI_API_KEY,
+  baseURL: process.env.OPENAI_BASE_URL,
+  apiKey: process.env.OPENAI_API_KEY,
 });
-
-type RouteStop = {
-  place: string;
-  city?: string;
-  lat: number;
-  lng: number;
-  description: string;
-  reason: string;
-  ticketsRequired?: boolean;
-  ticketPrice?: string;
-  bookingAdvance?: string;
-  image?: string;
-};
-
-type RouteData = {
-  title: string;
-  stops: RouteStop[];
-};
-
-const removeTrailingJsonCommas = (value: string) => {
-  let result = "";
-  let inString = false;
-  let escaped = false;
-
-  for (let index = 0; index < value.length; index += 1) {
-    const character = value[index];
-
-    if (inString) {
-      result += character;
-      if (escaped) {
-        escaped = false;
-      } else if (character === "\\") {
-        escaped = true;
-      } else if (character === '"') {
-        inString = false;
-      }
-      continue;
-    }
-
-    if (character === '"') {
-      inString = true;
-      result += character;
-      continue;
-    }
-
-    if (character === ",") {
-      let nextIndex = index + 1;
-      while (/\s/.test(value[nextIndex] ?? "")) nextIndex += 1;
-      if (value[nextIndex] === "}" || value[nextIndex] === "]") continue;
-    }
-
-    result += character;
-  }
-
-  return result;
-};
-
-const parseRouteData = (content: string): RouteData => {
-  let normalized = content.trim();
-
-  // Some providers still wrap JSON in Markdown despite response_format.
-  normalized = normalized.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
-
-  const firstObject = normalized.indexOf("{");
-  const lastObject = normalized.lastIndexOf("}");
-  if (firstObject >= 0 && lastObject > firstObject) {
-    normalized = normalized.slice(firstObject, lastObject + 1);
-  }
-
-  return JSON.parse(removeTrailingJsonCommas(normalized)) as RouteData;
-};
-
-type UserRole = "user" | "admin";
-type UserPlan = "free" | "paid_10" | "paid_50" | "paid_100" | "none";
-
-const PLAN_LIMITS: Record<Exclude<UserPlan, "none">, number> = {
-  free: 3,
-  paid_10: 10,
-  paid_50: 50,
-  paid_100: 100,
-};
-const USER_PLANS = ["free", "paid_10", "paid_50", "paid_100"] as const;
-const getPlanRank = (plan: UserPlan) =>
-  plan === "none" ? -1 : USER_PLANS.indexOf(plan);
-
-const getPlanLimit = (plan: UserPlan) =>
-  plan === "none" ? 0 : (PLAN_LIMITS[plan] ?? PLAN_LIMITS.free);
-
-type AuthenticatedUser = {
-  userId: number;
-  email: string;
-  role: UserRole;
-  plan: UserPlan;
-  dailyLimit: number;
-  usageDate: string | null;
-  usageCount: number;
-};
 
 type WikipediaSearchResult = {
   title: string;
@@ -190,7 +90,7 @@ const normalizeThumbnailUrl = (url?: string) => {
 };
 
 const getStopSearchLabel = (stop: RouteStop) =>
-  [...new Set([stop.place?.trim(), stop.city?.trim()].filter(Boolean))].join(
+  [...new Set([stop.name?.trim(), stop.city?.trim()].filter(Boolean))].join(
     ", ",
   );
 
@@ -222,8 +122,6 @@ type GenerationEvent = {
   percent?: number;
   route?: unknown;
 };
-
-type ProgressReporter = (event: Omit<GenerationEvent, "type">) => void;
 
 type NominatimSearchResult = {
   lat?: string;
@@ -380,88 +278,6 @@ const enrichStopsWithImages = async (
   );
 };
 
-const getUserById = (userId: number): AuthenticatedUser | undefined => {
-  const user = sqlite
-    .prepare(
-      "SELECT id, email, role, plan, daily_limit, usage_date, usage_count FROM users WHERE id = ?",
-    )
-    .get(userId) as
-    | {
-        id: number;
-        email: string;
-        role: string;
-        plan: string;
-        daily_limit: number;
-        usage_date: string | null;
-        usage_count: number;
-      }
-    | undefined;
-
-  if (!user) return undefined;
-
-  const role: UserRole = user.role === "admin" ? "admin" : "user";
-  const plan: UserPlan = role === "admin" ? "none" : (user.plan as UserPlan);
-
-  return {
-    userId: user.id,
-    email: user.email,
-    role,
-    plan,
-    dailyLimit: getPlanLimit(plan),
-    usageDate: user.usage_date,
-    usageCount: user.usage_count,
-  };
-};
-
-const toPublicUser = (user: AuthenticatedUser | undefined) => {
-  if (!user) return undefined;
-  return {
-    ...user,
-    plan: user.role === "admin" ? null : user.plan,
-  };
-};
-
-const getToday = () => new Date().toISOString().slice(0, 10);
-
-const getNextResetAt = () => {
-  const reset = new Date();
-  reset.setUTCHours(24, 0, 0, 0);
-  return reset.toISOString();
-};
-
-const consumeGenerationQuota = (userId: number) => {
-  const user = getUserById(userId);
-  if (!user) return { allowed: false, reason: "Корисник није пронађен." };
-  if (user.role === "admin")
-    return { allowed: true, remaining: null, limit: null, resetAt: null };
-
-  const today = getToday();
-  const usageCount = user.usageDate === today ? user.usageCount : 0;
-  const limit = getPlanLimit(user.plan);
-
-  if (usageCount >= limit) {
-    return {
-      allowed: false,
-      reason: `Достигнут је дневни лимит захтева (${limit}).`,
-      remaining: 0,
-      limit,
-      resetAt: getNextResetAt(),
-    };
-  }
-
-  const nextUsageCount = usageCount + 1;
-  sqlite
-    .prepare("UPDATE users SET usage_date = ?, usage_count = ? WHERE id = ?")
-    .run(today, nextUsageCount, userId);
-
-  return {
-    allowed: true,
-    remaining: limit - nextUsageCount,
-    limit,
-    resetAt: getNextResetAt(),
-  };
-};
-
 const getCookies = (header?: string) =>
   Object.fromEntries(
     (header ?? "").split(";").flatMap((part) => {
@@ -596,7 +412,7 @@ app.get("/api/auth/google/callback", async (req, res) => {
 });
 
 app.get("/api/me", auth, (req: any, res) => {
-  res.json(toPublicUser(req.user));
+  res.json(userService.toPublicUser(req.user));
 });
 
 app.patch("/api/me/plan", auth, nonAdminOnly, (req: any, res) => {
@@ -607,9 +423,9 @@ app.patch("/api/me/plan", auth, nonAdminOnly, (req: any, res) => {
 
   sqlite
     .prepare("UPDATE users SET plan = ?, daily_limit = ? WHERE id = ?")
-    .run(requestedPlan, getPlanLimit(requestedPlan), req.user.userId);
+    .run(requestedPlan, userService.getPlanLimit(requestedPlan), req.user.userId);
 
-  res.json(toPublicUser(getUserById(req.user.userId)));
+  res.json(userService.toPublicUser(userService.getUserById(req.user.userId)));
 });
 
 app.get("/api/admin/stats", auth, adminOnly, (req, res) => {
@@ -677,7 +493,7 @@ app.get("/api/admin/users", auth, adminOnly, (req, res) => {
       email: String(user.email),
       role: String(user.role),
       plan: user.role === "admin" ? null : String(user.plan),
-      dailyLimit: getPlanLimit(
+      dailyLimit: userService.getPlanLimit(
         user.role === "admin" ? "none" : (user.plan as UserPlan),
       ),
       usageDate: user.usage_date,
@@ -690,7 +506,7 @@ app.get("/api/admin/users", auth, adminOnly, (req, res) => {
 
 app.patch("/api/admin/users/:id", auth, adminOnly, (req, res) => {
   const userId = Number(req.params.id);
-  const currentUser = getUserById(userId);
+  const currentUser = userService.getUserById(userId);
   if (!currentUser)
     return res.status(404).json({ error: "Корисник није пронађен." });
 
@@ -728,7 +544,7 @@ app.patch("/api/admin/users/:id", auth, adminOnly, (req, res) => {
         : "free";
   }
 
-  const dailyLimit = requestedRole === "admin" ? 0 : getPlanLimit(plan);
+  const dailyLimit = requestedRole === "admin" ? 0 : userService.getPlanLimit(plan);
 
   sqlite
     .prepare(
@@ -741,7 +557,7 @@ app.patch("/api/admin/users/:id", auth, adminOnly, (req, res) => {
       userId,
     );
 
-  res.json(toPublicUser(getUserById(userId)));
+  res.json(userService.toPublicUser(userService.getUserById(userId)));
 });
 
 const fetchRoute = async (
@@ -758,97 +574,12 @@ const fetchRoute = async (
   }
 };
 
-type PreparedRoute = {
-  routeData: RouteData;
-  stops: RouteStop[];
-  routeCoordinates: [number, number][] | null;
-};
-
-const getErrorStatus = (error: unknown) => {
-  if (error && typeof error === "object" && "status" in error) {
-    const status = (error as { status?: unknown }).status;
-    if (typeof status === "number") return status;
-  }
-  const message = error instanceof Error ? error.message : String(error ?? "");
-  const match = message.match(/\b(429|503)\b/);
-  return match ? Number(match[1]) : undefined;
-};
-
-const prepareRoute = async (
-  prompt: string,
-  report: ProgressReporter,
-  existingRoute?: { title: string; data: string },
-): Promise<PreparedRoute> => {
-  report({
-    step: existingRoute ? "edit_started" : "started",
-    message: existingRoute ? "Припремам измену постојеће руте." : "Покрећем планирање путовања.",
-    percent: 0,
-  });
-  report({
-    step: "ai_started",
-    message: existingRoute ? "AI агент обрађује ваш додатни захтев." : "AI агент осмишљава руту.",
-    percent: 10,
-  });
-
-  const context = existingRoute
-    ? `Постојећа рута:\n${JSON.stringify({ title: existingRoute.title, stops: JSON.parse(existingRoute.data) })}\n\nДодатни захтев корисника:\n${prompt}`
-    : prompt;
-  const messages = [
-    {
-      role: "system" as const,
-      content: existingRoute
-          ? "Ти си стручњак за измену путних рута. Врати ИСКЉУЧИВО валидан JSON објекат са пољима title и stops. Задржи корисне постојеће локације, али измени, додај или уклони стајалишта у складу са додатним захтевом. Стајалишта морају имати place, city, lat, lng, description и reason. Ако су потребне улазнице, додај ticketsRequired као true, ticketPrice са ценом и валутом и bookingAdvance са тиме колико унапред треба купити/резервисати. Ако нису потребне, постави ticketsRequired на false и изостави остала поља. Врати 4 до 6 логично повезаних стајалишта. Опис и разлог посете напиши на српском језику у најмање 3 реченице."
-        : 'Ти си искусни стручњак за планирање путовања. На основу корисничког упита креирај логичну, реалну и географски повезану руту са 4 до 6 стајалишта. Стајалишта морају имати place, city, lat, lng, description и reason. Ако су потребне улазнице, додај ticketsRequired као true, ticketPrice са ценом и валутом и bookingAdvance са тиме колико унапред треба купити/резервисати. Ако нису потребне, постави ticketsRequired на false и изостави остала поља. Одговори ИСКЉУЧИВО у валидном JSON формату са пољима title и stops. Опис и разлог посете напиши на српском језику у најмање 3 реченице.',
-    },
-    { role: "user" as const, content: context },
-  ];
-  let completion;
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
-    try {
-      completion = await client.chat.completions.create({
-        messages,
-        model: "gemini-3-flash-preview",
-        response_format: { type: "json_object" },
-      });
-      break;
-    } catch (error) {
-      const status = getErrorStatus(error);
-      if ((status !== 503 && status !== 429) || attempt === 3) {
-        if (status === 503) throw new Error("AI сервис је тренутно недоступан. Покушајте поново.");
-        if (status === 429) throw new Error("AI лимит је тренутно достигнут. Сачекајте и покушајте поново.");
-        throw error;
-      }
-      const delay = attempt * 1500;
-      report({ step: "ai_retry", message: `AI сервис је привремено недоступан. Поновни покушај за ${Math.round(delay / 1000)} секунде.`, percent: 10 });
-      await wait(delay);
-    }
-  }
-  if (!completion) throw new Error("AI сервис није вратио одговор. Покушајте поново.");
-  report({ step: "ai_completed", message: "AI агент је направио предлог руте.", percent: 35 });
-
-  let routeData: RouteData;
-  try {
-    routeData = parseRouteData(completion.choices[0].message.content || "{}");
-  } catch (error) {
-    console.error("Error parsing route data:", error);
-    throw new Error("AI није вратио исправан формат руте.");
-  }
-  if (!routeData.title || !Array.isArray(routeData.stops)) {
-    throw new Error("AI није вратио валидне податке о рути.");
-  }
-
-  report({ step: "geocoding_started", message: `Проверавам координате за ${routeData.stops.length} стајалишта.`, percent: 35 });
-  const geocodedStops = await geocodeStops(routeData.stops, (event) => report({ ...event, percent: event.percent === undefined ? 35 : 35 + Math.round(event.percent * 0.1) }));
-  report({ step: "geocoding_completed", message: "Координате су проверене преко Nominatim-а.", percent: 45 });
-  report({ step: "images_started", message: `Обогаћујем ${geocodedStops.length} стајалишта сликама.`, percent: 50 });
-  const stops = await enrichStopsWithImages(geocodedStops, (event) => report({ ...event, percent: event.percent === undefined ? 50 : 50 + Math.round(event.percent * 0.3) }));
-  report({ step: "images_completed", message: "Обогаћивање сликама је завршено.", percent: 80 });
-  report({ step: "route_started", message: "Израчунавам путну трасу.", percent: 85 });
-  const routeCoordinates = await fetchRoute(stops.map((stop) => `${stop.lng},${stop.lat}`));
-  report({ step: routeCoordinates ? "route_completed" : "route_warning", message: routeCoordinates ? "Путна траса је израчуната." : "Путна траса није доступна, али рута може бити сачувана.", percent: 90 });
-
-  return { routeData, stops, routeCoordinates };
-};
+const routeService = new RouteService({
+  client,
+  geocodeStops,
+  enrichStopsWithImages,
+  fetchRoute,
+});
 
 app.post("/api/login", login);
 app.post("/api/register", register);
@@ -860,7 +591,7 @@ app.post("/api/generate", auth, nonAdminOnly, async (req: any, res) => {
     return res.status(400).json({ error: "Унос је обавезан." });
   }
 
-  const quota = consumeGenerationQuota(req.user.userId);
+  const quota = userService.consumeGenerationQuota(req.user.userId);
   if (!quota.allowed) {
     return res.status(429).json({
       error: quota.reason,
@@ -887,7 +618,7 @@ app.post("/api/generate", auth, nonAdminOnly, async (req: any, res) => {
   };
 
   try {
-    const { routeData, stops, routeCoordinates } = await prepareRoute(req.body.prompt, sendProgress);
+    const { routeData, stops, routeCoordinates } = await routeService.prepareRoute(req.body.prompt, sendProgress);
 
     sendProgress({
       step: "saving_started",
@@ -981,7 +712,7 @@ app.put("/api/routes/:id", auth, nonAdminOnly, async (req: any, res) => {
   const existingRoute = existingRoutes[0];
   if (!existingRoute) return res.status(404).json({ error: "Рута није пронађена." });
 
-  const quota = consumeGenerationQuota(req.user.userId);
+  const quota = userService.consumeGenerationQuota(req.user.userId);
   if (!quota.allowed) {
     return res.status(429).json({ error: quota.reason, remaining: quota.remaining, limit: quota.limit, resetAt: quota.resetAt });
   }
@@ -1000,7 +731,7 @@ app.put("/api/routes/:id", auth, nonAdminOnly, async (req: any, res) => {
   const sendProgress = (event: Omit<GenerationEvent, "type">) => sendEvent({ type: "progress", ...event });
 
   try {
-    const { routeData, stops, routeCoordinates } = await prepareRoute(req.body.prompt, sendProgress, existingRoute);
+    const { routeData, stops, routeCoordinates } = await routeService.prepareRoute(req.body.prompt, sendProgress, existingRoute);
     sendProgress({ step: "saving_started", message: "Чувам измене руте.", percent: 95 });
 
     const updated = await db.update(schema.routes)

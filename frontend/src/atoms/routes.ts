@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { tokenAtom } from '../atoms/auth';
 
 export type RouteStop = {
-  place: string;
+  name: string;
   city?: string;
   lat: number;
   lng: number;
@@ -12,6 +12,7 @@ export type RouteStop = {
   reason: string;
   ticketsRequired?: boolean;
   ticketPrice?: string;
+  ticketCurrency?: string;
   bookingAdvance?: string;
   image?: string;
 };

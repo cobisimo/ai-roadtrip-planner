@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
-import { getUserById, type AuthenticatedUser } from "../services/users.js";
+import { userService, type AuthenticatedUser } from "../services/user.service.js";
 
 const jwtSecret = process.env.JWT_SECRET || "m3_chip_power_123";
 
@@ -11,7 +11,7 @@ export const auth = (req: AuthenticatedRequest, res: Response, next: NextFunctio
   if (!token) return res.status(401).send("Недостаје токен.");
   try {
     const decoded = jwt.verify(token, jwtSecret) as { userId: number };
-    const user = getUserById(decoded.userId);
+    const user = userService.getUserById(decoded.userId);
     if (!user) return res.status(401).send("Корисник није пронађен.");
     req.user = user;
     next();
