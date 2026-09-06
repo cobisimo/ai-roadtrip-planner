@@ -429,7 +429,7 @@ app.patch("/api/me/plan", auth, nonAdminOnly, (req: any, res) => {
 });
 
 app.get("/api/admin/stats", auth, adminOnly, (req, res) => {
-  const today = getToday();
+  const today = userService.getToday();
   const userStats = sqlite
     .prepare(
       `

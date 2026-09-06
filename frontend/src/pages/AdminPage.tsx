@@ -8,6 +8,8 @@ import {
   Group,
   Menu,
   Modal,
+  Progress,
+  RingProgress,
   Select,
   SimpleGrid,
   Stack,
@@ -17,7 +19,7 @@ import {
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconDotsVertical, IconLogout } from '@tabler/icons-react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useAtom } from 'jotai';
 import { useNavigate } from 'react-router-dom';
 import { tokenAtom, useCurrentUser } from '../atoms/auth';
@@ -51,20 +53,18 @@ export function AdminPage() {
   const [, setToken] = useAtom(tokenAtom);
   const { data: currentUser } = useCurrentUser();
   const { stats, users, isLoading, error, updateUser, updatingUserId } = useAdminData();
-  const [drafts, setDrafts] = useState<Record<number, DraftUser>>({});
+  const [draftChanges, setDraftChanges] = useState<Record<number, Partial<DraftUser>>>({});
   const [editingUserId, setEditingUserId] = useState<number | null>(null);
   const [editModalOpened, setEditModalOpened] = useState(false);
 
-  useEffect(() => {
-    if (!users) return;
-    setDrafts(Object.fromEntries(users.map((user) => [user.id, {
-      role: user.role,
-      plan: user.plan,
-    }])));
-  }, [users]);
+  const drafts = Object.fromEntries((users ?? []).map((user) => [user.id, {
+    role: user.role,
+    plan: user.plan,
+    ...draftChanges[user.id],
+  }])) as Record<number, DraftUser>;
 
   const updateDraft = (user: AdminUser, patch: Partial<DraftUser>) => {
-    setDrafts((current) => ({
+    setDraftChanges((current) => ({
       ...current,
       [user.id]: { ...current[user.id], ...patch },
     }));
@@ -76,6 +76,11 @@ export function AdminPage() {
 
     try {
       await updateUser({ userId: user.id, ...draft });
+      setDraftChanges((current) => {
+        const next = { ...current };
+        delete next[user.id];
+        return next;
+      });
       notifications.show({ title: 'Корисник је ажуриран', message: `Подаци за ${user.email} су ажурирани.`, color: 'green' });
       setEditModalOpened(false);
     } catch (saveError) {
@@ -85,6 +90,18 @@ export function AdminPage() {
 
   const editingUser = users?.find((user) => user.id === editingUserId);
   const editingDraft = editingUser ? drafts[editingUser.id] : undefined;
+  const totalUsers = stats?.totalUsers ?? 0;
+  const freeUsers = stats?.freeUsers ?? 0;
+  const paidUsers = stats?.paidUsers ?? 0;
+  const adminUsers = stats?.adminUsers ?? 0;
+  const userSegments = totalUsers > 0
+    ? [
+      { value: (freeUsers / totalUsers) * 100, color: 'gray.5', label: 'Бесплатни', count: freeUsers },
+      { value: (paidUsers / totalUsers) * 100, color: 'indigo.6', label: 'Плаћени', count: paidUsers },
+      { value: (adminUsers / totalUsers) * 100, color: 'orange.6', label: 'Администратори', count: adminUsers },
+    ]
+    : [{ value: 100, color: 'gray.3', label: 'Нема података', count: 0 }];
+  const activityMax = Math.max(stats?.requestsToday ?? 0, stats?.totalRoutes ?? 0, stats?.routesToday ?? 0, 1);
 
   const handleLogout = () => {
     setToken(null);
@@ -127,6 +144,55 @@ export function AdminPage() {
               <Text size="xl" fw={700} mt={4}>{value}</Text>
             </Card>
           ))}
+        </SimpleGrid>
+
+        <SimpleGrid cols={{ base: 1, md: 2 }}>
+          <Card withBorder padding="lg" radius="md">
+            <Group justify="space-between" align="flex-start">
+              <div>
+                <Title order={3}>Структура корисника</Title>
+                <Text size="sm" c="dimmed" mt={4}>Расподела налога по плану и улози.</Text>
+              </div>
+              <RingProgress
+                size={150}
+                thickness={18}
+                roundCaps
+                sections={userSegments}
+                label={<Text ta="center" fw={700} size="lg">{totalUsers}</Text>}
+              />
+            </Group>
+            <Stack gap="xs" mt="md">
+              {userSegments.map((segment) => (
+                <Group key={segment.label} justify="space-between" gap="xs">
+                  <Group gap="xs">
+                    <span style={{ width: 9, height: 9, borderRadius: '50%', background: `var(--mantine-color-${segment.color.replace('.', '-')})` }} />
+                    <Text size="sm">{segment.label}</Text>
+                  </Group>
+                  <Text size="sm" fw={600}>{segment.count}</Text>
+                </Group>
+              ))}
+            </Stack>
+          </Card>
+
+          <Card withBorder padding="lg" radius="md">
+            <Title order={3}>Активност</Title>
+            <Text size="sm" c="dimmed" mt={4}>Кључне метрике коришћења система.</Text>
+            <Stack gap="md" mt="xl">
+              {[
+                ['Захтеви данас', stats?.requestsToday ?? 0, 'indigo'],
+                ['Укупно рута', stats?.totalRoutes ?? 0, 'teal'],
+                ['Руте данас', stats?.routesToday ?? 0, 'orange'],
+              ].map(([label, value, color]) => (
+                <div key={String(label)}>
+                  <Group justify="space-between" mb={5}>
+                    <Text size="sm">{label}</Text>
+                    <Text size="sm" fw={700}>{value}</Text>
+                  </Group>
+                  <Progress value={(Number(value) / activityMax) * 100} color={String(color)} radius="xl" size="md" />
+                </div>
+              ))}
+            </Stack>
+          </Card>
         </SimpleGrid>
 
         <Card withBorder padding="md" radius="md">

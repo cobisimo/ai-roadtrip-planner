@@ -32,6 +32,10 @@ type StoredUser = {
 };
 
 export class UserService {
+  getToday() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
   getPlanLimit(plan: UserPlan) {
     return plan === "none" ? 0 : (PLAN_LIMITS[plan] ?? PLAN_LIMITS.free);
   }
@@ -65,7 +69,7 @@ export class UserService {
     if (!user) return { allowed: false, reason: "Корисник није пронађен." };
     if (user.role === "admin") return { allowed: true, remaining: null, limit: null, resetAt: null };
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = this.getToday();
     const usageCount = user.usageDate === today ? user.usageCount : 0;
     const limit = this.getPlanLimit(user.plan);
     if (usageCount >= limit) {
