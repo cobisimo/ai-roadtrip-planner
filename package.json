@@ -16,6 +16,7 @@
   },
   "scripts": {
     "dev": "tsx --env-file=.env src/server.ts",
+    "benchmark": "tsx --env-file=.env scripts/benchmark-route.ts",
     "seed": "tsx --env-file=.env src/db/seed.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },

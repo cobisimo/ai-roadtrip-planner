@@ -6,13 +6,12 @@ import bcrypt from "bcryptjs";
 import { randomBytes } from "node:crypto";
 import * as schema from "../db/schema.js";
 import { and, eq, desc } from "drizzle-orm";
-import axios from "axios";
 import { OAuth2Client } from "google-auth-library";
 import { db, sqlite } from "../db/client.js";
 import "../db/migrateUsers.js";
 import { adminOnly, auth, nonAdminOnly } from "../middleware/auth.js";
 import { forgotPassword, login, register, resetPassword } from "../controllers/auth.controller.js";
-import { RouteService, type ProgressReporter, type RouteStop } from "../services/route.service.js";
+import { RouteService } from "../services/route.service.js";
 import { USER_PLANS, userService, type UserPlan, type UserRole } from "../services/user.service.js";
 
 process.on("uncaughtException", (err) => {
@@ -58,224 +57,12 @@ const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-type WikipediaSearchResult = {
-  title: string;
-  matched_title?: string | null;
-  description?: string | null;
-  thumbnail?: {
-    url?: string;
-  } | null;
-};
-
-const WIKIMEDIA_USER_AGENT =
-  process.env.WIKIMEDIA_USER_AGENT ??
-  "AI Roadtrip Planner/1.0 (route image enrichment; local development)";
-
-const WIKIPEDIA_HEADERS = {
-  "User-Agent": WIKIMEDIA_USER_AGENT,
-  "Api-User-Agent": WIKIMEDIA_USER_AGENT,
-  Accept: "application/json",
-};
-
-const NOMINATIM_USER_AGENT =
-  process.env.NOMINATIM_USER_AGENT ??
-  "AI Roadtrip Planner/1.0 (geocoding; configure NOMINATIM_USER_AGENT for production)";
-const NOMINATIM_EMAIL = process.env.NOMINATIM_EMAIL;
-type GeocodedPlace = { lat: number; lng: number; city?: string };
-const nominatimCache = new Map<string, GeocodedPlace | null>();
-
-const normalizeThumbnailUrl = (url?: string) => {
-  if (!url) return undefined;
-  return url.replace("60px", "500px").replace("//", "https://");
-};
-
-const getStopSearchLabel = (stop: RouteStop) =>
-  [...new Set([stop.name?.trim(), stop.city?.trim()].filter(Boolean))].join(
-    ", ",
-  );
-
-const fetchWikipediaImage = async (query: string) => {
-  if (!query) {
-    return undefined;
-  }
-
-  const response = await axios.get<{ pages?: WikipediaSearchResult[] }>(
-    "https://sr.wikipedia.org/w/rest.php/v1/search/page",
-    {
-      params: {
-        q: query,
-        limit: 1,
-      },
-      headers: WIKIPEDIA_HEADERS,
-      timeout: 5000,
-    },
-  );
-
-  const pages = response.data.pages ?? [];
-  return normalizeThumbnailUrl(pages[0]?.thumbnail?.url);
-};
-
 type GenerationEvent = {
   type: "progress" | "error" | "complete";
   step?: string;
   message?: string;
   percent?: number;
   route?: unknown;
-};
-
-type NominatimSearchResult = {
-  lat?: string;
-  lon?: string;
-  address?: Record<string, string | undefined>;
-};
-
-const getClosestCity = (address?: Record<string, string | undefined>) =>
-  address?.city ||
-  address?.town ||
-  address?.village ||
-  address?.municipality ||
-  address?.hamlet;
-
-const fetchNominatimCoordinates = async (query: string) => {
-  const normalizedQuery = query.trim().toLocaleLowerCase();
-  if (!normalizedQuery) return undefined;
-
-  if (nominatimCache.has(normalizedQuery)) {
-    return nominatimCache.get(normalizedQuery) ?? undefined;
-  }
-
-  const response = await axios.get<NominatimSearchResult[]>(
-    "https://nominatim.openstreetmap.org/search",
-    {
-      params: {
-        q: query,
-        format: "jsonv2",
-        limit: 1,
-        addressdetails: 1,
-        ...(NOMINATIM_EMAIL ? { email: NOMINATIM_EMAIL } : {}),
-      },
-      headers: {
-        "User-Agent": NOMINATIM_USER_AGENT,
-        Referer: FRONTEND_URL,
-        Accept: "application/json",
-      },
-      timeout: 8000,
-    },
-  );
-
-  const result = response.data[0];
-  const lat = Number(result?.lat);
-  const lng = Number(result?.lon);
-  const city = getClosestCity(result?.address);
-  const coordinates =
-    Number.isFinite(lat) && Number.isFinite(lng)
-      ? { lat, lng, ...(city ? { city } : {}) }
-      : null;
-  nominatimCache.set(normalizedQuery, coordinates);
-  return coordinates ?? undefined;
-};
-
-const wait = (milliseconds: number) =>
-  new Promise((resolve) => setTimeout(resolve, milliseconds));
-
-const geocodeStops = async (stops: RouteStop[], report?: ProgressReporter) => {
-  const geocodedStops: RouteStop[] = [];
-
-  for (const [index, stop] of stops.entries()) {
-    const label = getStopSearchLabel(stop) || `стajалиште ${index + 1}`;
-    report?.({
-      step: "geocode_started",
-      message: `Проналазим прецизније координате за: ${label}`,
-    });
-
-    try {
-      const coordinates = await fetchNominatimCoordinates(label);
-      if (coordinates) {
-        geocodedStops.push({
-          ...stop,
-          ...coordinates,
-          city: coordinates.city ?? stop.city,
-        });
-        report?.({
-          step: "geocode_completed",
-          message: `Координате су ажуриране за: ${label}`,
-          percent: Math.round(((index + 1) / stops.length) * 100),
-        });
-      } else {
-        geocodedStops.push(stop);
-        report?.({
-          step: "geocode_failed",
-          message: `Координате нису пронађене за: ${label}; користим AI координате.`,
-          percent: Math.round(((index + 1) / stops.length) * 100),
-        });
-      }
-    } catch (error) {
-      console.error(`Error geocoding stop "${label}":`, error);
-      geocodedStops.push(stop);
-      report?.({
-        step: "geocode_failed",
-        message: `Геокодирање није успело за: ${label}; користим AI координате.`,
-        percent: Math.round(((index + 1) / stops.length) * 100),
-      });
-    }
-
-    if (index < stops.length - 1) {
-      await wait(1000);
-    }
-  }
-
-  return geocodedStops;
-};
-
-const enrichStopsWithImages = async (
-  stops: RouteStop[],
-  report?: ProgressReporter,
-) => {
-  return Promise.all(
-    stops.map(async (stop, index) => {
-      const label = getStopSearchLabel(stop) || `стajалиште ${index + 1}`;
-
-      if (stop.image) {
-        report?.({
-          step: "image_completed",
-          message: `Слика већ постоји за: ${label}`,
-          percent: Math.round(((index + 1) / stops.length) * 100),
-        });
-        return stop;
-      }
-
-      report?.({
-        step: "image_started",
-        message: `Проналазим слику за: ${label}`,
-      });
-
-      try {
-        const image = await fetchWikipediaImage(getStopSearchLabel(stop));
-        if (image) {
-          report?.({
-            step: "image_completed",
-            message: `Слика је пронађена за: ${label}`,
-            percent: Math.round(((index + 1) / stops.length) * 100),
-          });
-          return { ...stop, image };
-        }
-        report?.({
-          step: "image_failed",
-          message: `Слика није пронађена за: ${label}`,
-          percent: Math.round(((index + 1) / stops.length) * 100),
-        });
-      } catch (error) {
-        console.error(`Error fetching image for stop "${label}":`, error);
-        report?.({
-          step: "image_failed",
-          message: `Слика није могла да се учита за: ${label}`,
-          percent: Math.round(((index + 1) / stops.length) * 100),
-        });
-      }
-
-      return stop;
-    }),
-  );
 };
 
 const getCookies = (header?: string) =>
@@ -560,26 +347,7 @@ app.patch("/api/admin/users/:id", auth, adminOnly, (req, res) => {
   res.json(userService.toPublicUser(userService.getUserById(userId)));
 });
 
-const fetchRoute = async (
-  waypoints: string[],
-): Promise<[number, number][] | null> => {
-  try {
-    const response = await axios.get(
-      `https://router.project-osrm.org/route/v1/driving/${waypoints.join(";")}?overview=full&geometries=geojson`,
-    );
-    return response.data.routes[0].geometry.coordinates;
-  } catch (error) {
-    console.error("Error fetching route:", error);
-    return null;
-  }
-};
-
-const routeService = new RouteService({
-  client,
-  geocodeStops,
-  enrichStopsWithImages,
-  fetchRoute,
-});
+const routeService = new RouteService({ client });
 
 app.post("/api/login", login);
 app.post("/api/register", register);
